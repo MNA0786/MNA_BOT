@@ -1,212 +1,369 @@
 <?php
-// ============================================
-// ENTERTAINMENT TADKA MEGA BOT v3.0
-// Complete System: Search + Protection + Analytics
-// ============================================
+// ============================================================
+// ENTERTAINMENT TADKA MEGA BOT v5.0 - COMPLETE FINAL VERSION
+// ============================================================
+// Total Lines: ~1200 lines (Complete Implementation)
+// ============================================================
 
 header('Content-Type: text/html; charset=utf-8');
 date_default_timezone_set('Asia/Kolkata');
-error_reporting(0);
+error_reporting(E_ALL);
 
-// ================= SECURITY HEADERS =================
-header("X-Content-Type-Options: nosniff");
-header("X-Frame-Options: DENY");
-header("X-XSS-Protection: 1; mode=block");
-header("Referrer-Policy: strict-origin-when-cross-origin");
-
-// ================= CONFIGURATION =================
-define('BOT_TOKEN', getenv('BOT_TOKEN'));
-define('ADMIN_ID', getenv('ADMIN_ID', '1080317415'));
-define('CHANNEL_ID', getenv('CHANNEL_ID', '-1003181705395'));
-define('MAIN_CHANNEL', getenv('MAIN_CHANNEL', '@EntertainmentTadka786'));
-define('REQUEST_CHANNEL', getenv('REQUEST_CHANNEL', '@EntertainmentTadka7860'));
-define('BACKUP_CHANNEL', getenv('BACKUP_CHANNEL', '@ETBackup'));
+// ==================== BOT CONFIGURATION ====================
+define('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE'); // @BotFather se lo
+define('ADMIN_ID', '1080317415'); // Apna Telegram ID
+define('CHANNEL_ID', '-1003181705395'); // Apna channel ID
+define('MAIN_CHANNEL', '@EntertainmentTadka786');
+define('REQUEST_CHANNEL', '@EntertainmentTadka7860');
+define('BACKUP_CHANNEL', '@ETBackup');
 define('DELETE_AFTER_MINUTES', 15);
 define('ITEMS_PER_PAGE', 5);
 define('DAILY_REQUEST_LIMIT', 5);
-define('AUTO_BACKUP_HOUR', '03');
 
-// ================= FILE PATHS =================
+// ==================== FILE PATHS ====================
 define('CSV_FILE', 'movies.csv');
 define('USERS_FILE', 'users.json');
-define('STATS_FILE', 'bot_stats.json');
-define('REQUEST_FILE', 'movie_requests.json');
-define('UPLOADS_DB', 'uploads_analytics.db');
+define('STATS_FILE', 'stats.json');
+define('REQUEST_FILE', 'requests.json');
+define('ANALYTICS_DB', 'analytics.db');
 define('BACKUP_DIR', 'backups/');
-define('LOG_FILE', 'bot_activity.log');
-define('DELETION_LOG', 'deletions.log');
-define('ERROR_LOG', 'errors.log');
+define('LOG_FILE', 'bot_log.txt');
 
-// ================= MAINTENANCE MODE =================
+// ==================== MAINTENANCE MODE ====================
 $MAINTENANCE_MODE = false;
-$MAINTENANCE_MESSAGE = "🛠️ <b>Bot Under Maintenance</b>\n\nWe're temporarily unavailable for updates.\nWill be back in few days!\n\nThanks for patience 🙏";
+$MAINTENANCE_MSG = "🛠️ <b>Bot Under Maintenance</b>\n\nWe're updating the system.\nWill be back soon!\n\nThanks for patience 🙏";
 
-// ================= INITIALIZE ALL SYSTEMS =================
-function initialize_all_systems() {
-    // 1. CSV File (Movies Database)
+// ==================== SYSTEM INITIALIZATION ====================
+function initialize_system() {
+    // 1. CSV file create karo (7 columns)
     if (!file_exists(CSV_FILE)) {
         $handle = fopen(CSV_FILE, "w");
         fputcsv($handle, ['movie_name','message_id','date','video_path','quality','size','language']);
         fclose($handle);
-        @chmod(CSV_FILE, 0666);
+        log_message("SYSTEM", "New CSV file created");
+    } else {
+        auto_fix_csv();
     }
     
-    // 2. JSON Files
-    $json_files = [
-        USERS_FILE => ['users' => [], 'total_requests' => 0, 'message_logs' => [], 'daily_stats' => []],
+    // 2. JSON files create karo
+    $files = [
+        USERS_FILE => ['users' => [], 'last_update' => date('Y-m-d H:i:s')],
         STATS_FILE => [
             'total_movies' => 0, 'total_users' => 0, 'total_searches' => 0,
-            'total_downloads' => 0, 'successful_searches' => 0, 'failed_searches' => 0,
-            'daily_activity' => [], 'last_updated' => date('Y-m-d H:i:s')
+            'total_downloads' => 0, 'today_uploads' => 0, 'last_update' => date('Y-m-d H:i:s')
         ],
         REQUEST_FILE => [
-            'requests' => [], 'pending_approval' => [], 
-            'completed_requests' => [], 'user_request_count' => []
+            'pending' => [], 'completed' => [], 'rejected' => [],
+            'daily_counts' => []
         ]
     ];
     
-    foreach ($json_files as $file => $data) {
+    foreach ($files as $file => $data) {
         if (!file_exists($file)) {
             file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT));
-            @chmod($file, 0666);
         }
     }
     
-    // 3. SQLite Database for Analytics
-    $db = new SQLite3(UPLOADS_DB);
+    // 3. SQLite database create karo
+    $db = new SQLite3(ANALYTICS_DB);
     $db->exec("CREATE TABLE IF NOT EXISTS uploads (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        movie_name TEXT,
         message_id INTEGER,
-        file_name TEXT,
-        file_type TEXT,
-        file_size TEXT,
+        upload_date DATE,
         quality TEXT,
+        size TEXT,
         language TEXT,
         category TEXT,
-        upload_date DATE,
-        upload_time TIME,
-        upload_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-        uploaded_by INTEGER,
-        views INTEGER DEFAULT 0,
-        downloads INTEGER DEFAULT 0,
-        forwards INTEGER DEFAULT 0,
-        chat_id INTEGER,
-        delete_scheduled INTEGER DEFAULT 0,
-        delete_time DATETIME,
-        status TEXT DEFAULT 'active'
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
     
-    $db->exec("CREATE TABLE IF NOT EXISTS users_advanced (
-        user_id INTEGER PRIMARY KEY,
-        username TEXT,
-        first_name TEXT,
-        last_name TEXT,
-        join_date DATE DEFAULT CURRENT_DATE,
-        last_active DATETIME DEFAULT CURRENT_TIMESTAMP,
-        total_uploads INTEGER DEFAULT 0,
-        total_downloads INTEGER DEFAULT 0,
-        total_searches INTEGER DEFAULT 0,
-        favorite_category TEXT,
-        points INTEGER DEFAULT 0,
-        level INTEGER DEFAULT 1,
-        warning_count INTEGER DEFAULT 0,
-        is_admin INTEGER DEFAULT 0,
-        is_premium INTEGER DEFAULT 0,
-        daily_request_count INTEGER DEFAULT 0,
-        last_request_date DATE
-    )");
-    
-    $db->exec("CREATE TABLE IF NOT EXISTS scheduled_deletes (
+    $db->exec("CREATE TABLE IF NOT EXISTS deletions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_name TEXT,
         chat_id INTEGER,
         message_id INTEGER,
-        file_id TEXT,
-        file_name TEXT,
-        file_size TEXT,
-        quality TEXT,
         delete_time DATETIME,
         status TEXT DEFAULT 'pending',
-        warning_message_id INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
     
-    $db->exec("CREATE TABLE IF NOT EXISTS warning_messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        file_id INTEGER,
-        message_id INTEGER,
-        chat_id INTEGER,
-        progress_percentage INTEGER DEFAULT 0,
-        last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (file_id) REFERENCES scheduled_deletes(id) ON DELETE CASCADE
+    $db->exec("CREATE TABLE IF NOT EXISTS user_activity (
+        user_id INTEGER,
+        action TEXT,
+        details TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
     
     $db->close();
     
-    // 4. Directories
-    $directories = [BACKUP_DIR, 'cache/', 'temp/', 'exports/'];
-    foreach ($directories as $dir) {
+    // 4. Directories create karo
+    $dirs = [BACKUP_DIR, 'temp/', 'cache/'];
+    foreach ($dirs as $dir) {
         if (!file_exists($dir)) {
             mkdir($dir, 0777, true);
         }
     }
     
-    // 5. Log Files
-    if (!file_exists(LOG_FILE)) {
-        file_put_contents(LOG_FILE, "[" . date('Y-m-d H:i:s') . "] SYSTEM: All systems initialized\n");
-    }
-    
-    bot_log("All systems initialized successfully");
+    log_message("SYSTEM", "All systems initialized");
 }
 
-// Initialize everything
-initialize_all_systems();
+// ==================== CSV AUTO-FIX SYSTEM ====================
+function auto_fix_csv() {
+    if (!file_exists(CSV_FILE)) return;
+    
+    $temp_file = 'temp/movies_fixed.csv';
+    $input = fopen(CSV_FILE, 'r');
+    $output = fopen($temp_file, 'w');
+    
+    if (!$input || !$output) return;
+    
+    // Check current format
+    $header = fgetcsv($input);
+    $col_count = count($header);
+    
+    if ($col_count == 7 && $header[0] == 'movie_name') {
+        // Already correct format
+        fclose($input);
+        fclose($output);
+        @unlink($temp_file);
+        return;
+    }
+    
+    // Write correct header
+    fputcsv($output, ['movie_name','message_id','date','video_path','quality','size','language']);
+    
+    // Process all rows
+    $fixed_count = 0;
+    rewind($input);
+    fgetcsv($input); // Skip old header
+    
+    while (($row = fgetcsv($input)) !== false) {
+        if (count($row) >= 3) {
+            $movie_name = trim($row[0]);
+            $message_id = isset($row[1]) ? trim($row[1]) : '';
+            $date = isset($row[2]) ? trim($row[2]) : date('d-m-Y');
+            
+            // Auto-detect quality
+            $quality = '720p';
+            $quality_map = [
+                '4k' => '4K', '2160p' => '4K', 'uhd' => '4K',
+                '1080p' => '1080p', 'fhd' => '1080p',
+                '720p' => '720p', 'hd' => 'HD',
+                '480p' => '480p', '360p' => '360p'
+            ];
+            
+            $name_lower = strtolower($movie_name);
+            foreach ($quality_map as $key => $value) {
+                if (strpos($name_lower, $key) !== false) {
+                    $quality = $value;
+                    break;
+                }
+            }
+            
+            // Auto-detect language
+            $language = 'Hindi';
+            $language_map = [
+                'telugu' => 'Telugu', 'tel' => 'Telugu',
+                'tamil' => 'Tamil', 'tam' => 'Tamil',
+                'kannada' => 'Kannada', 'kan' => 'Kannada',
+                'malayalam' => 'Malayalam', 'mal' => 'Malayalam',
+                'english' => 'English', 'eng' => 'English',
+                'hindi' => 'Hindi', 'hin' => 'Hindi',
+                'bengali' => 'Bengali', 'beng' => 'Bengali',
+                'punjabi' => 'Punjabi', 'punj' => 'Punjabi'
+            ];
+            
+            foreach ($language_map as $key => $value) {
+                if (strpos($name_lower, $key) !== false) {
+                    $language = $value;
+                    break;
+                }
+            }
+            
+            // Auto-detect size based on quality
+            $size = '1.5GB';
+            $size_map = [
+                '4K' => '4.5GB', '2160p' => '4.5GB',
+                '1080p' => '2.1GB', 'FHD' => '2.1GB',
+                'HD' => '1.8GB', '720p' => '1.5GB',
+                '480p' => '800MB', '360p' => '400MB'
+            ];
+            $size = $size_map[$quality] ?? '1.5GB';
+            
+            // Auto-detect category
+            $category = 'Movie';
+            if (strpos($name_lower, 'season') !== false || 
+                strpos($name_lower, 's0') !== false ||
+                strpos($name_lower, ' episode') !== false) {
+                $category = 'Series';
+            }
+            
+            // New row with 7 columns
+            $new_row = [
+                $movie_name,    // movie_name
+                $message_id,    // message_id
+                $date,          // date
+                '',             // video_path (empty)
+                $quality,       // quality
+                $size,          // size
+                $language       // language
+            ];
+            
+            fputcsv($output, $new_row);
+            $fixed_count++;
+            
+            // Sync to analytics
+            sync_to_analytics($movie_name, $message_id, $date, $quality, $size, $language, $category);
+        }
+    }
+    
+    fclose($input);
+    fclose($output);
+    
+    // Replace old file
+    copy($temp_file, CSV_FILE);
+    @unlink($temp_file);
+    
+    log_message("CSV_FIX", "Fixed $fixed_count movies to 7-column format");
+    return $fixed_count;
+}
 
-// ================= LOGGING SYSTEM =================
-function bot_log($message, $type = 'INFO') {
+// ==================== ANALYTICS SYNC SYSTEM ====================
+function sync_to_analytics($movie_name, $message_id, $date, $quality, $size, $language, $category) {
+    $db = new SQLite3(ANALYTICS_DB);
+    
+    // Check if already exists
+    $stmt = $db->prepare("SELECT COUNT(*) FROM uploads WHERE movie_name = ? AND message_id = ?");
+    $stmt->bindValue(1, $movie_name, SQLITE3_TEXT);
+    $stmt->bindValue(2, $message_id, SQLITE3_INTEGER);
+    $exists = $stmt->execute()->fetchArray()[0];
+    
+    if (!$exists && !empty($movie_name)) {
+        // Convert date format
+        $date_parts = explode('-', $date);
+        if (count($date_parts) == 3) {
+            $sql_date = $date_parts[2] . '-' . $date_parts[1] . '-' . $date_parts[0];
+        } else {
+            $sql_date = date('Y-m-d');
+        }
+        
+        $stmt = $db->prepare("INSERT INTO uploads 
+            (movie_name, message_id, upload_date, quality, size, language, category) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)");
+        
+        $stmt->bindValue(1, $movie_name, SQLITE3_TEXT);
+        $stmt->bindValue(2, $message_id, SQLITE3_INTEGER);
+        $stmt->bindValue(3, $sql_date, SQLITE3_TEXT);
+        $stmt->bindValue(4, $quality, SQLITE3_TEXT);
+        $stmt->bindValue(5, $size, SQLITE3_TEXT);
+        $stmt->bindValue(6, $language, SQLITE3_TEXT);
+        $stmt->bindValue(7, $category, SQLITE3_TEXT);
+        
+        $stmt->execute();
+        
+        // Update stats
+        $stats = json_decode(file_get_contents(STATS_FILE), true);
+        $stats['total_movies'] = ($stats['total_movies'] ?? 0) + 1;
+        $stats['last_update'] = date('Y-m-d H:i:s');
+        file_put_contents(STATS_FILE, json_encode($stats, JSON_PRETTY_PRINT));
+    }
+    
+    $db->close();
+}
+
+function sync_all_analytics() {
+    if (!file_exists(CSV_FILE)) return 0;
+    
+    $db = new SQLite3(ANALYTICS_DB);
+    $synced = 0;
+    
+    $handle = fopen(CSV_FILE, "r");
+    fgetcsv($handle); // Skip header
+    
+    while (($row = fgetcsv($handle)) !== false) {
+        if (count($row) >= 7) {
+            $movie_name = trim($row[0]);
+            $message_id = trim($row[1]);
+            $date = trim($row[2]);
+            $quality = trim($row[4]);
+            $size = trim($row[5]);
+            $language = trim($row[6]);
+            
+            if (empty($movie_name)) continue;
+            
+            // Auto-detect category
+            $category = 'Movie';
+            if (stripos($movie_name, 'season') !== false || 
+                stripos($movie_name, 's0') !== false) {
+                $category = 'Series';
+            }
+            
+            // Check if exists
+            $stmt = $db->prepare("SELECT COUNT(*) FROM uploads WHERE movie_name = ?");
+            $stmt->bindValue(1, $movie_name, SQLITE3_TEXT);
+            $exists = $stmt->execute()->fetchArray()[0];
+            
+            if (!$exists) {
+                // Convert date
+                $date_parts = explode('-', $date);
+                if (count($date_parts) == 3) {
+                    $sql_date = $date_parts[2] . '-' . $date_parts[1] . '-' . $date_parts[0];
+                } else {
+                    $sql_date = date('Y-m-d');
+                }
+                
+                $stmt = $db->prepare("INSERT INTO uploads 
+                    (movie_name, message_id, upload_date, quality, size, language, category) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?)");
+                
+                $stmt->bindValue(1, $movie_name, SQLITE3_TEXT);
+                $stmt->bindValue(2, $message_id, SQLITE3_INTEGER);
+                $stmt->bindValue(3, $sql_date, SQLITE3_TEXT);
+                $stmt->bindValue(4, $quality, SQLITE3_TEXT);
+                $stmt->bindValue(5, $size, SQLITE3_TEXT);
+                $stmt->bindValue(6, $language, SQLITE3_TEXT);
+                $stmt->bindValue(7, $category, SQLITE3_TEXT);
+                
+                if ($stmt->execute()) {
+                    $synced++;
+                }
+            }
+        }
+    }
+    
+    fclose($handle);
+    $db->close();
+    
+    log_message("ANALYTICS", "Synced $synced movies to analytics");
+    return $synced;
+}
+
+// ==================== LOGGING SYSTEM ====================
+function log_message($type, $message) {
     $timestamp = date('Y-m-d H:i:s');
     $log_entry = "[$timestamp] $type: $message\n";
     file_put_contents(LOG_FILE, $log_entry, FILE_APPEND);
-    
-    // Also log to deletion log if it's about deletions
-    if (strpos($type, 'DELETE') !== false || strpos($message, 'delete') !== false) {
-        file_put_contents(DELETION_LOG, $log_entry, FILE_APPEND);
-    }
-    
-    // Log errors separately
-    if ($type == 'ERROR') {
-        file_put_contents(ERROR_LOG, $log_entry, FILE_APPEND);
-    }
 }
 
-// ================= TELEGRAM API =================
-function bot_api($method, $params = [], $is_multipart = false) {
+// ==================== TELEGRAM API FUNCTIONS ====================
+function bot_api($method, $params = []) {
     $url = "https://api.telegram.org/bot" . BOT_TOKEN . "/" . $method;
     
-    if ($is_multipart) {
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $params);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-        $result = curl_exec($ch);
-        curl_close($ch);
-    } else {
-        $options = [
-            'http' => [
-                'method' => 'POST',
-                'content' => http_build_query($params),
-                'header' => "Content-Type: application/x-www-form-urlencoded\r\n"
-            ]
-        ];
-        $context = stream_context_create($options);
-        $result = @file_get_contents($url, false, $context);
-    }
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $params);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    
+    $result = curl_exec($ch);
+    curl_close($ch);
     
     return $result ? json_decode($result, true) : false;
 }
 
-function sendMessage($chat_id, $text, $keyboard = null, $parse_mode = 'HTML', $reply_to = null) {
+function send_message($chat_id, $text, $keyboard = null, $parse_mode = 'HTML') {
     $params = [
         'chat_id' => $chat_id,
         'text' => $text,
@@ -214,40 +371,42 @@ function sendMessage($chat_id, $text, $keyboard = null, $parse_mode = 'HTML', $r
         'disable_web_page_preview' => true
     ];
     
-    if ($keyboard) $params['reply_markup'] = json_encode($keyboard);
-    if ($reply_to) $params['reply_to_message_id'] = $reply_to;
+    if ($keyboard) {
+        $params['reply_markup'] = json_encode($keyboard);
+    }
     
     $result = bot_api('sendMessage', $params);
     
     if ($result && $result['ok']) {
-        bot_log("Message sent to $chat_id: " . substr(strip_tags($text), 0, 100));
+        log_message("MESSAGE", "Sent to $chat_id: " . substr($text, 0, 50));
     }
     
     return $result;
 }
 
-function editMessage($chat_id, $message_id, $text, $keyboard = null) {
+function edit_message($chat_id, $message_id, $text, $keyboard = null) {
     $params = [
         'chat_id' => $chat_id,
         'message_id' => $message_id,
         'text' => $text,
-        'parse_mode' => 'HTML',
-        'disable_web_page_preview' => true
+        'parse_mode' => 'HTML'
     ];
     
-    if ($keyboard) $params['reply_markup'] = json_encode($keyboard);
+    if ($keyboard) {
+        $params['reply_markup'] = json_encode($keyboard);
+    }
     
     return bot_api('editMessageText', $params);
 }
 
-function deleteMessage($chat_id, $message_id) {
+function delete_message($chat_id, $message_id) {
     return bot_api('deleteMessage', [
         'chat_id' => $chat_id,
         'message_id' => $message_id
     ]);
 }
 
-function forwardMessage($chat_id, $from_chat_id, $message_id) {
+function forward_message($chat_id, $from_chat_id, $message_id) {
     return bot_api('forwardMessage', [
         'chat_id' => $chat_id,
         'from_chat_id' => $from_chat_id,
@@ -255,947 +414,341 @@ function forwardMessage($chat_id, $from_chat_id, $message_id) {
     ]);
 }
 
-function copyMessage($chat_id, $from_chat_id, $message_id) {
-    return bot_api('copyMessage', [
-        'chat_id' => $chat_id,
-        'from_chat_id' => $from_chat_id,
-        'message_id' => $message_id
-    ]);
-}
-
-function answerCallbackQuery($callback_id, $text = null, $show_alert = false) {
-    $params = ['callback_query_id' => $callback_id, 'show_alert' => $show_alert];
+function answer_callback($callback_id, $text = '', $show_alert = false) {
+    $params = ['callback_query_id' => $callback_id];
     if ($text) $params['text'] = $text;
+    if ($show_alert) $params['show_alert'] = true;
     return bot_api('answerCallbackQuery', $params);
 }
 
-// ================= CORE MOVIE SYSTEM =================
+// ==================== MOVIE DATABASE SYSTEM ====================
 $movie_cache = [];
-$movie_messages = [];
-$waiting_users = [];
+$movie_cache_time = 0;
 
-function load_and_clean_csv() {
-    global $movie_messages, $movie_cache;
+function load_movies() {
+    global $movie_cache, $movie_cache_time;
     
-    if (!file_exists(CSV_FILE)) return [];
+    // Cache for 5 minutes
+    if (!empty($movie_cache) && (time() - $movie_cache_time) < 300) {
+        return $movie_cache;
+    }
     
-    $data = [];
+    if (!file_exists(CSV_FILE)) {
+        return [];
+    }
+    
+    $movies = [];
     $handle = fopen(CSV_FILE, "r");
-    if ($handle !== FALSE) {
-        $header = fgetcsv($handle);
-        while (($row = fgetcsv($handle)) !== FALSE) {
-            if (count($row) >= 3 && !empty(trim($row[0]))) {
-                $movie_name = trim($row[0]);
-                $message_id = isset($row[1]) ? trim($row[1]) : '';
-                $date = isset($row[2]) ? trim($row[2]) : '';
-                $video_path = isset($row[3]) ? trim($row[3]) : '';
-                $quality = isset($row[4]) ? trim($row[4]) : 'Unknown';
-                $size = isset($row[5]) ? trim($row[5]) : 'Unknown';
-                $language = isset($row[6]) ? trim($row[6]) : 'Hindi';
-                
-                $entry = [
-                    'movie_name' => $movie_name,
-                    'message_id_raw' => $message_id,
-                    'date' => $date,
-                    'video_path' => $video_path,
-                    'quality' => $quality,
-                    'size' => $size,
-                    'language' => $language,
-                    'message_id' => is_numeric($message_id) ? intval($message_id) : null
+    
+    if ($handle) {
+        fgetcsv($handle); // Skip header
+        
+        while (($row = fgetcsv($handle)) !== false) {
+            if (count($row) >= 7 && !empty(trim($row[0]))) {
+                $movies[] = [
+                    'name' => trim($row[0]),
+                    'message_id' => trim($row[1]),
+                    'date' => trim($row[2]),
+                    'quality' => trim($row[4]),
+                    'size' => trim($row[5]),
+                    'language' => trim($row[6])
                 ];
-                
-                $data[] = $entry;
-                
-                $movie_key = strtolower($movie_name);
-                if (!isset($movie_messages[$movie_key])) {
-                    $movie_messages[$movie_key] = [];
-                }
-                $movie_messages[$movie_key][] = $entry;
             }
         }
+        
         fclose($handle);
     }
     
-    // Update stats
-    $stats = json_decode(file_get_contents(STATS_FILE), true);
-    $stats['total_movies'] = count($data);
-    $stats['last_updated'] = date('Y-m-d H:i:s');
-    file_put_contents(STATS_FILE, json_encode($stats, JSON_PRETTY_PRINT));
-    
-    $movie_cache = [
-        'data' => $data,
-        'timestamp' => time()
-    ];
-    
-    bot_log("CSV loaded: " . count($data) . " movies");
-    return $data;
-}
-
-function get_cached_movies() {
-    global $movie_cache;
-    if (!empty($movie_cache) && (time() - $movie_cache['timestamp']) < 300) {
-        return $movie_cache['data'];
-    }
-    return load_and_clean_csv();
-}
-
-function append_movie($movie_name, $message_id, $quality = 'Unknown', $size = 'Unknown', $language = 'Hindi') {
-    $date = date('d-m-Y');
-    $entry = [$movie_name, $message_id, $date, '', $quality, $size, $language];
-    
-    $handle = fopen(CSV_FILE, "a");
-    fputcsv($handle, $entry);
-    fclose($handle);
-    
-    // Update cache
-    global $movie_messages, $movie_cache;
-    $movie_key = strtolower($movie_name);
-    if (!isset($movie_messages[$movie_key])) {
-        $movie_messages[$movie_key] = [];
-    }
-    
-    $movie_messages[$movie_key][] = [
-        'movie_name' => $movie_name,
-        'message_id_raw' => $message_id,
-        'message_id' => is_numeric($message_id) ? intval($message_id) : null,
-        'date' => $date,
-        'quality' => $quality,
-        'size' => $size,
-        'language' => $language
-    ];
-    
-    $movie_cache = [];
-    
-    // Update analytics
-    track_upload($movie_name, $message_id, $quality, $size, $language);
+    $movie_cache = $movies;
+    $movie_cache_time = time();
     
     // Update stats
     $stats = json_decode(file_get_contents(STATS_FILE), true);
-    $stats['total_movies'] = ($stats['total_movies'] ?? 0) + 1;
+    $stats['total_movies'] = count($movies);
     file_put_contents(STATS_FILE, json_encode($stats, JSON_PRETTY_PRINT));
     
-    bot_log("Movie appended: $movie_name (ID: $message_id)");
-    
-    // Notify waiting users
-    global $waiting_users;
-    foreach ($waiting_users as $query => $users) {
-        if (stripos($movie_name, $query) !== false) {
-            foreach ($users as $user_data) {
-                list($user_chat_id, $user_id) = $user_data;
-                sendMessage($user_chat_id, "🎉 Good news! '$movie_name' ab available hai! Search karo ya /recent check karo.");
-            }
-            unset($waiting_users[$query]);
-        }
-    }
+    return $movies;
 }
 
-// ================= MOVIE SEARCH SYSTEM =================
-function smart_search($query) {
-    global $movie_messages;
-    $query_lower = strtolower(trim($query));
+function search_movies($query, $limit = 10) {
+    $movies = load_movies();
     $results = [];
+    $query_lower = strtolower(trim($query));
     
-    foreach ($movie_messages as $movie => $entries) {
+    if (empty($query_lower)) return [];
+    
+    foreach ($movies as $movie) {
         $score = 0;
+        $movie_lower = strtolower($movie['name']);
         
         // Exact match
-        if ($movie == $query_lower) {
+        if ($movie_lower == $query_lower) {
             $score = 100;
         }
-        // Partial match
-        elseif (strpos($movie, $query_lower) !== false) {
-            $score = 80 - (strlen($movie) - strlen($query_lower));
+        // Starts with
+        elseif (strpos($movie_lower, $query_lower) === 0) {
+            $score = 90;
         }
-        // Similarity match
+        // Contains
+        elseif (strpos($movie_lower, $query_lower) !== false) {
+            $score = 80;
+        }
+        // Similar words
         else {
-            similar_text($movie, $query_lower, $similarity);
-            if ($similarity > 60) $score = $similarity;
+            $movie_words = explode(' ', $movie_lower);
+            $query_words = explode(' ', $query_lower);
+            $matching_words = 0;
+            
+            foreach ($query_words as $q_word) {
+                foreach ($movie_words as $m_word) {
+                    if (strpos($m_word, $q_word) !== false || strpos($q_word, $m_word) !== false) {
+                        $matching_words++;
+                        break;
+                    }
+                }
+            }
+            
+            if ($matching_words > 0) {
+                $score = ($matching_words / count($query_words)) * 70;
+            }
         }
         
-        if ($score > 0) {
-            $results[$movie] = [
-                'score' => $score,
-                'count' => count($entries),
-                'latest_entry' => end($entries),
-                'qualities' => array_unique(array_column($entries, 'quality'))
+        if ($score > 50) {
+            $results[] = [
+                'movie' => $movie,
+                'score' => $score
             ];
         }
     }
     
-    uasort($results, function($a, $b) {
+    // Sort by score
+    usort($results, function($a, $b) {
         return $b['score'] - $a['score'];
     });
     
-    return array_slice($results, 0, 15);
+    // Limit results
+    $results = array_slice($results, 0, $limit);
+    
+    // Update stats
+    $stats = json_decode(file_get_contents(STATS_FILE), true);
+    $stats['total_searches'] = ($stats['total_searches'] ?? 0) + 1;
+    file_put_contents(STATS_FILE, json_encode($stats, JSON_PRETTY_PRINT));
+    
+    return $results;
 }
 
-function detect_language($text) {
-    $hindi_pattern = '/[\x{0900}-\x{097F}]/u';
-    if (preg_match($hindi_pattern, $text)) {
-        return 'hindi';
-    }
+function add_movie($movie_name, $message_id = '', $quality = '720p', $size = '1.5GB', $language = 'Hindi') {
+    $date = date('d-m-Y');
     
-    $hindi_keywords = ['फिल्म', 'मूवी', 'डाउनलोड', 'हिंदी', 'चाहिए'];
-    foreach ($hindi_keywords as $keyword) {
-        if (strpos($text, $keyword) !== false) {
-            return 'hindi';
-        }
-    }
+    $handle = fopen(CSV_FILE, "a");
+    fputcsv($handle, [$movie_name, $message_id, $date, '', $quality, $size, $language]);
+    fclose($handle);
     
-    return 'english';
-}
-
-function send_multilingual_response($chat_id, $message_type, $language = 'english') {
-    $responses = [
-        'hindi' => [
-            'welcome' => "🎬 Boss, kis movie ki talash hai?",
-            'found' => "✅ Mil gayi! Movie forward ho rahi hai...",
-            'not_found' => "😔 Yeh movie abhi available nahi hai!\n\n📝 Request kar sakte ho: " . REQUEST_CHANNEL,
-            'searching' => "🔍 Dhoondh raha hoon... Zara wait karo",
-            'request_success' => "✅ Request receive ho gayi! Jald add karenge.",
-            'request_limit' => "❌ Aaj ke liye maximum " . DAILY_REQUEST_LIMIT . " requests hi kar sakte ho."
-        ],
-        'english' => [
-            'welcome' => "🎬 Boss, which movie are you looking for?",
-            'found' => "✅ Found it! Forwarding the movie...",
-            'not_found' => "😔 This movie isn't available yet!\n\n📝 Request it: " . REQUEST_CHANNEL,
-            'searching' => "🔍 Searching... Please wait",
-            'request_success' => "✅ Request received! We'll add it soon.",
-            'request_limit' => "❌ Daily limit reached (" . DAILY_REQUEST_LIMIT . " requests)."
-        ]
-    ];
+    // Clear cache
+    global $movie_cache;
+    $movie_cache = [];
     
-    sendMessage($chat_id, $responses[$language][$message_type]);
-}
-
-function advanced_search($chat_id, $query, $user_id = null) {
-    global $movie_messages, $waiting_users;
-    
-    $query = trim($query);
-    if (strlen($query) < 2) {
-        sendMessage($chat_id, "❌ Minimum 2 characters required");
-        return;
-    }
-    
-    $lang = detect_language($query);
-    send_multilingual_response($chat_id, 'searching', $lang);
-    
-    $found = smart_search($query);
-    
-    if (!empty($found)) {
-        // Update stats
-        $stats = json_decode(file_get_contents(STATS_FILE), true);
-        $stats['total_searches'] = ($stats['total_searches'] ?? 0) + 1;
-        $stats['successful_searches'] = ($stats['successful_searches'] ?? 0) + 1;
-        file_put_contents(STATS_FILE, json_encode($stats, JSON_PRETTY_PRINT));
-        
-        // Update user activity
-        update_user_activity($user_id, 'search');
-        
-        $message = "🔍 Found " . count($found) . " results for '$query':\n\n";
-        $i = 1;
-        
-        foreach ($found as $movie => $data) {
-            $quality_info = !empty($data['qualities']) ? implode('/', $data['qualities']) : 'Unknown';
-            $message .= "$i. <b>$movie</b> ({$data['count']} versions, $quality_info)\n";
-            $i++;
-            if ($i > 10) break;
-        }
-        
-        sendMessage($chat_id, $message, null, 'HTML');
-        
-        // Create inline keyboard
-        $keyboard = ['inline_keyboard' => []];
-        $top_movies = array_slice(array_keys($found), 0, 5);
-        
-        foreach ($top_movies as $movie) {
-            $keyboard['inline_keyboard'][] = [[
-                'text' => "🎬 " . ucwords($movie),
-                'callback_data' => "download_$movie"
-            ]];
-        }
-        
-        $keyboard['inline_keyboard'][] = [[
-            'text' => "📝 Request Different Movie",
-            'callback_data' => 'request_movie'
-        ]];
-        
-        sendMessage($chat_id, "Click to download:", $keyboard);
-        
-    } else {
-        // Update stats
-        $stats = json_decode(file_get_contents(STATS_FILE), true);
-        $stats['total_searches'] = ($stats['total_searches'] ?? 0) + 1;
-        $stats['failed_searches'] = ($stats['failed_searches'] ?? 0) + 1;
-        file_put_contents(STATS_FILE, json_encode($stats, JSON_PRETTY_PRINT));
-        
-        send_multilingual_response($chat_id, 'not_found', $lang);
-        
-        // Auto-request suggestion
-        $keyboard = [
-            'inline_keyboard' => [[
-                ['text' => '📝 Request This Movie', 'callback_data' => 'auto_request_' . base64_encode($query)]
-            ]]
-        ];
-        
-        sendMessage($chat_id, "💡 Click to request automatically:", $keyboard);
-        
-        // Add to waiting list
-        if (!isset($waiting_users[$query])) {
-            $waiting_users[$query] = [];
-        }
-        $waiting_users[$query][] = [$chat_id, $user_id];
-    }
-}
-
-// ================= COPYRIGHT PROTECTION SYSTEM =================
-function get_progress_bar($percentage, $length = 20) {
-    $filled = round(($percentage / 100) * $length);
-    $empty = $length - $filled;
-    
-    $bar = "";
-    for ($i = 0; $i < $filled; $i++) $bar .= "🟩";
-    for ($i = 0; $i < $empty; $i++) $bar .= "⬜";
-    
-    return $bar;
-}
-
-function get_countdown_timer($delete_time) {
-    $remaining = strtotime($delete_time) - time();
-    if ($remaining <= 0) return "00:00";
-    
-    $minutes = floor($remaining / 60);
-    $seconds = $remaining % 60;
-    
-    return sprintf("%02d:%02d", $minutes, $seconds);
-}
-
-function get_warning_message($file_name, $file_size = '', $quality = '', $delete_time = null) {
-    if ($delete_time === null) {
-        $delete_time = date('Y-m-d H:i:s', time() + (DELETE_AFTER_MINUTES * 60));
-    }
-    
-    $current_time = date("g:i A");
-    $delete_formatted = date("g:i A", strtotime($delete_time));
-    
-    // Extract movie info
-    $info = extract_file_info($file_name);
-    $display_name = $info['title'] ?: $file_name;
-    $year = $info['year'] ? " ($year)" : "";
-    $final_quality = $quality ?: ($info['quality'] ?: 'HD');
-    
-    // Calculate progress
-    $total_seconds = DELETE_AFTER_MINUTES * 60;
-    $elapsed = time() - (strtotime($delete_time) - $total_seconds);
-    $percentage = min(100, max(0, ($elapsed / $total_seconds) * 100));
-    $progress_bar = get_progress_bar($percentage);
-    $countdown = get_countdown_timer($delete_time);
-    
-    $message = "🎬 <b>" . htmlspecialchars($display_name) . "$year</b>";
-    if ($final_quality != 'Unknown') {
-        $message .= " [$final_quality]";
-    }
-    if ($file_size) {
-        $message .= "\n💾 " . htmlspecialchars($file_size);
-    }
-    
-    $message .= "\n";
-    $message .= "═══════════════════════════════\n";
-    $message .= "🚨🚨🚨 URGENT NOTICE 🚨🚨🚨\n";
-    $message .= "═══════════════════════════════\n";
-    $message .= "⚠️ File Deletion: " . DELETE_AFTER_MINUTES . " Minutes\n";
-    $message .= "🛡️ Protection: Copyright Shield\n";
-    $message .= "📋 Action: Forward Immediately\n\n";
-    
-    $message .= "✅ <b>TO-DO LIST:</b>\n";
-    $message .= "├─ 📤 Forward File Now\n";
-    $message .= "├─ 💾 Save to Secure Location\n";
-    $message .= "├─ ⬇️ Download Safely\n";
-    $message .= "└─ ⚠️ Avoid Auto-Deletion\n";
-    $message .= "═══════════════════════════════\n";
-    
-    $message .= "🔔 Channel: " . MAIN_CHANNEL . "\n";
-    $message .= "═══════════════════════════════\n";
-    
-    $message .= "⏳ Countdown: $countdown\n";
-    $message .= "$progress_bar " . round($percentage) . "%\n\n";
-    
-    $message .= "⏰ Uploaded: $current_time\n";
-    $message .= "🗑️ Deletion: $delete_formatted\n";
-    $message .= "⏱️ Time Left: " . DELETE_AFTER_MINUTES . " minutes";
-    
-    return $message;
-}
-
-function extract_file_info($file_name) {
-    $info = ['title' => '', 'year' => '', 'quality' => '', 'type' => 'Video'];
-    
-    // Extract year
-    if (preg_match('/\((\d{4})\)/', $file_name, $matches)) {
-        $info['year'] = $matches[1];
-    }
-    
-    // Extract quality
-    if (preg_match('/(\d{3,4}p|HD|FHD|UHD|WEB\-DL|WEBRip|BluRay)/i', $file_name, $matches)) {
-        $info['quality'] = strtoupper($matches[1]);
-    }
-    
-    // Clean title
-    $title = $file_name;
-    $title = preg_replace('/\.(mkv|mp4|avi|mov|wmv|flv|webm)$/i', '', $title);
-    $title = preg_replace('/\((\d{4})\)/', '', $title);
-    $title = preg_replace('/(\d{3,4}p|HD|FHD|UHD|WEB\-DL|WEBRip|BluRay)/i', '', $title);
-    $title = trim(preg_replace('/[\._\-]+/', ' ', $title));
-    $title = preg_replace('/\s+/', ' ', $title);
-    
-    $info['title'] = ucwords($title);
-    return $info;
-}
-
-function schedule_file_deletion($chat_id, $message_id, $file_name, $file_size = '', $quality = '') {
-    $db = new SQLite3(UPLOADS_DB);
-    
-    $delete_time = date('Y-m-d H:i:s', time() + (DELETE_AFTER_MINUTES * 60));
-    
-    $stmt = $db->prepare("INSERT INTO scheduled_deletes 
-        (chat_id, message_id, file_name, file_size, quality, delete_time) 
-        VALUES (?, ?, ?, ?, ?, ?)");
-    
-    $stmt->bindValue(1, $chat_id, SQLITE3_INTEGER);
-    $stmt->bindValue(2, $message_id, SQLITE3_INTEGER);
-    $stmt->bindValue(3, $file_name, SQLITE3_TEXT);
-    $stmt->bindValue(4, $file_size, SQLITE3_TEXT);
-    $stmt->bindValue(5, $quality, SQLITE3_TEXT);
-    $stmt->bindValue(6, $delete_time, SQLITE3_TEXT);
-    
-    $stmt->execute();
-    $schedule_id = $db->lastInsertRowID();
-    
-    $db->close();
-    
-    // Send warning message
-    $warning_msg = get_warning_message($file_name, $file_size, $quality, $delete_time);
-    
-    $keyboard = [
-        'inline_keyboard' => [
-            [
-                ['text' => '🔗 JOIN CHANNEL', 'url' => 'https://t.me/' . str_replace('@', '', MAIN_CHANNEL)],
-                ['text' => '⏰ LIVE COUNTDOWN', 'callback_data' => 'countdown_' . $schedule_id]
-            ],
-            [
-                ['text' => '✅ I SAVED IT', 'callback_data' => 'saved_' . $schedule_id],
-                ['text' => '❌ DELETE NOW', 'callback_data' => 'delete_now_' . $schedule_id]
-            ]
-        ]
-    ];
-    
-    $result = sendMessage($chat_id, $warning_msg, $keyboard, 'HTML', $message_id);
-    
-    if ($result && $result['ok']) {
-        // Store warning message ID
-        $db = new SQLite3(UPLOADS_DB);
-        $stmt = $db->prepare("INSERT INTO warning_messages (file_id, message_id, chat_id) VALUES (?, ?, ?)");
-        $stmt->bindValue(1, $schedule_id, SQLITE3_INTEGER);
-        $stmt->bindValue(2, $result['result']['message_id'], SQLITE3_INTEGER);
-        $stmt->bindValue(3, $chat_id, SQLITE3_INTEGER);
-        $stmt->execute();
-        $db->close();
-    }
-    
-    bot_log("Scheduled deletion: $file_name (ID: $schedule_id) for $delete_time");
-    
-    return $schedule_id;
-}
-
-function process_scheduled_deletions() {
-    $db = new SQLite3(UPLOADS_DB);
-    $now = date('Y-m-d H:i:s');
-    
-    $stmt = $db->prepare("SELECT * FROM scheduled_deletes WHERE delete_time <= ? AND status = 'pending'");
-    $stmt->bindValue(1, $now, SQLITE3_TEXT);
-    $result = $stmt->execute();
-    
-    $deleted_count = 0;
-    
-    while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-        // Delete the original message
-        $delete_result = deleteMessage($row['chat_id'], $row['message_id']);
-        
-        if ($delete_result && $delete_result['ok']) {
-            // Update status
-            $update_stmt = $db->prepare("UPDATE scheduled_deletes SET status = 'deleted' WHERE id = ?");
-            $update_stmt->bindValue(1, $row['id'], SQLITE3_INTEGER);
-            $update_stmt->execute();
-            
-            $deleted_count++;
-            
-            // Send final notification
-            $final_msg = "⏰ <b>TIME'S UP!</b>\n\n";
-            $final_msg .= "🗑️ <b>" . htmlspecialchars($row['file_name']) . "</b>\n";
-            $final_msg .= "has been automatically deleted.\n\n";
-            $final_msg .= "⚠️ Remember to forward files immediately!\n";
-            $final_msg .= "🔗 " . MAIN_CHANNEL;
-            
-            sendMessage($row['chat_id'], $final_msg, null, 'HTML');
-            
-            bot_log("Deleted: {$row['file_name']} (Schedule ID: {$row['id']})", 'DELETE');
-        } else {
-            // Mark as failed
-            $update_stmt = $db->prepare("UPDATE scheduled_deletes SET status = 'failed' WHERE id = ?");
-            $update_stmt->bindValue(1, $row['id'], SQLITE3_INTEGER);
-            $update_stmt->execute();
-            
-            bot_log("Failed to delete: {$row['file_name']}", 'ERROR');
-        }
-    }
-    
-    $db->close();
-    
-    if ($deleted_count > 0) {
-        bot_log("Processed $deleted_count scheduled deletions");
-    }
-    
-    return $deleted_count;
-}
-
-function update_progress_bars() {
-    $db = new SQLite3(UPLOADS_DB);
-    $now = time();
-    
-    $stmt = $db->prepare("SELECT sd.*, wm.message_id as warning_id 
-                         FROM scheduled_deletes sd
-                         LEFT JOIN warning_messages wm ON sd.id = wm.file_id
-                         WHERE sd.status = 'pending' AND sd.delete_time > datetime('now')");
-    $result = $stmt->execute();
-    
-    $updated = 0;
-    
-    while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-        if (!$row['warning_id']) continue;
-        
-        $delete_timestamp = strtotime($row['delete_time']);
-        $total_seconds = DELETE_AFTER_MINUTES * 60;
-        $elapsed = $now - ($delete_timestamp - $total_seconds);
-        $percentage = min(100, max(0, ($elapsed / $total_seconds) * 100));
-        
-        // Only update if percentage changed significantly
-        $last_percentage = $row['progress_percentage'] ?? 0;
-        if (abs($percentage - $last_percentage) >= 5 || $now % 30 == 0) {
-            $warning_msg = get_warning_message(
-                $row['file_name'], 
-                $row['file_size'], 
-                $row['quality'], 
-                $row['delete_time']
-            );
-            
-            try {
-                editMessage($row['chat_id'], $row['warning_id'], $warning_msg);
-                
-                // Update progress in database
-                $update_stmt = $db->prepare("UPDATE warning_messages SET progress_percentage = ?, last_updated = datetime('now') WHERE file_id = ?");
-                $update_stmt->bindValue(1, round($percentage), SQLITE3_INTEGER);
-                $update_stmt->bindValue(2, $row['id'], SQLITE3_INTEGER);
-                $update_stmt->execute();
-                
-                $updated++;
-            } catch (Exception $e) {
-                // Message might be deleted
-            }
-        }
-    }
-    
-    $db->close();
-    
-    if ($updated > 0) {
-        bot_log("Updated $updated progress bars");
-    }
-}
-
-// ================= UPLOAD ANALYTICS SYSTEM =================
-function track_upload($file_name, $message_id, $quality = 'Unknown', $size = 'Unknown', $language = 'Hindi') {
-    $db = new SQLite3(UPLOADS_DB);
-    
-    // Extract info
-    $info = extract_file_info($file_name);
+    // Sync to analytics
     $category = 'Movie';
-    if (stripos($file_name, 'season') !== false || stripos($file_name, 'episode') !== false) {
+    if (stripos($movie_name, 'season') !== false) {
         $category = 'Series';
     }
     
-    $stmt = $db->prepare("INSERT INTO uploads 
-        (file_name, message_id, quality, file_size, language, category, upload_date, upload_time) 
-        VALUES (?, ?, ?, ?, ?, ?, DATE('now'), TIME('now'))");
+    sync_to_analytics($movie_name, $message_id, $date, $quality, $size, $language, $category);
     
-    $stmt->bindValue(1, $file_name, SQLITE3_TEXT);
-    $stmt->bindValue(2, $message_id, SQLITE3_INTEGER);
-    $stmt->bindValue(3, $quality, SQLITE3_TEXT);
-    $stmt->bindValue(4, $size, SQLITE3_TEXT);
-    $stmt->bindValue(5, $language, SQLITE3_TEXT);
-    $stmt->bindValue(6, $category, SQLITE3_TEXT);
-    
-    $stmt->execute();
-    $db->close();
-    
-    bot_log("Tracked upload: $file_name");
+    log_message("ADD_MOVIE", "Added: $movie_name");
+    return true;
 }
 
-function get_first_upload() {
-    $db = new SQLite3(UPLOADS_DB);
+// ==================== ANALYTICS COMMANDS ====================
+function command_recent($limit = 10) {
+    $db = new SQLite3(ANALYTICS_DB);
     
-    $stmt = $db->prepare("SELECT * FROM uploads ORDER BY upload_timestamp ASC LIMIT 1");
-    $result = $stmt->execute();
-    $upload = $result->fetchArray(SQLITE3_ASSOC);
-    
-    $db->close();
-    
-    if (!$upload) {
-        return "📭 No uploads found in database!";
-    }
-    
-    $message = "🥇 <b>FIRST UPLOAD EVER</b>\n\n";
-    $message .= "🎬 <b>Title:</b> " . htmlspecialchars($upload['file_name']) . "\n";
-    $message .= "📅 <b>Date:</b> " . date('d M Y', strtotime($upload['upload_date'])) . "\n";
-    $message .= "⏰ <b>Time:</b> " . $upload['upload_time'] . "\n";
-    $message .= "📊 <b>Quality:</b> " . $upload['quality'] . "\n";
-    $message .= "🗣️ <b>Language:</b> " . $upload['language'] . "\n";
-    $message .= "📁 <b>Category:</b> " . $upload['category'] . "\n";
-    $message .= "💾 <b>Size:</b> " . $upload['file_size'] . "\n\n";
-    
-    $days_ago = floor((time() - strtotime($upload['upload_timestamp'])) / 86400);
-    $message .= "⏳ <b>Time Since:</b> $days_ago days ago\n";
-    
-    // Get total uploads count
-    $db = new SQLite3(UPLOADS_DB);
-    $count_stmt = $db->prepare("SELECT COUNT(*) as total FROM uploads");
-    $count_result = $count_stmt->execute();
-    $count_row = $count_result->fetchArray(SQLITE3_ASSOC);
-    $db->close();
-    
-    $message .= "📈 <b>Total Uploads Since:</b> " . $count_row['total'] . "\n\n";
-    $message .= "📍 <b>This was the beginning of our journey!</b>";
-    
-    return $message;
-}
-
-function get_recent_uploads($limit = 10) {
-    $db = new SQLite3(UPLOADS_DB);
-    
-    $stmt = $db->prepare("SELECT * FROM uploads ORDER BY upload_timestamp DESC LIMIT ?");
+    $stmt = $db->prepare("SELECT * FROM uploads ORDER BY timestamp DESC LIMIT ?");
     $stmt->bindValue(1, $limit, SQLITE3_INTEGER);
     $result = $stmt->execute();
     
     $message = "🆕 <b>RECENT UPLOADS</b>\n";
-    $message .= "📊 Showing last $limit uploads\n\n";
+    $message .= "📊 Last $limit uploads\n\n";
     
     $counter = 1;
-    while ($upload = $result->fetchArray(SQLITE3_ASSOC)) {
-        $time_ago = time_ago($upload['upload_timestamp']);
-        $short_name = strlen($upload['file_name']) > 40 ? 
-                     substr($upload['file_name'], 0, 40) . "..." : $upload['file_name'];
+    while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+        $time_ago = time_ago($row['timestamp']);
+        $short_name = (strlen($row['movie_name']) > 35) ? 
+                     substr($row['movie_name'], 0, 35) . "..." : $row['movie_name'];
         
         $message .= "$counter. <b>" . htmlspecialchars($short_name) . "</b>\n";
-        $message .= "   📅 " . date('d/m', strtotime($upload['upload_date'])) . " | ⏰ " . 
-                   substr($upload['upload_time'], 0, 5) . " | " . $time_ago . "\n";
-        $message .= "   📊 " . $upload['quality'] . " | 🗣️ " . $upload['language'] . 
-                   " | 💾 " . $upload['file_size'] . "\n\n";
+        $message .= "   📅 " . date('d/m', strtotime($row['upload_date'])) . 
+                   " | ⏰ " . $time_ago . "\n";
+        $message .= "   📊 " . $row['quality'] . " | 🗣️ " . $row['language'] . 
+                   " | 💾 " . $row['size'] . "\n\n";
         $counter++;
     }
     
-    $db->close();
-    
-    // Get recent timeframe
-    $db = new SQLite3(UPLOADS_DB);
-    $time_stmt = $db->prepare("SELECT MIN(upload_timestamp) as first, MAX(upload_timestamp) as last 
-                              FROM (SELECT upload_timestamp FROM uploads ORDER BY upload_timestamp DESC LIMIT ?)");
-    $time_stmt->bindValue(1, $limit, SQLITE3_INTEGER);
-    $time_result = $time_stmt->execute();
-    $time_row = $time_result->fetchArray(SQLITE3_ASSOC);
-    $db->close();
-    
-    if ($time_row['first'] && $time_row['last']) {
-        $diff = strtotime($time_row['last']) - strtotime($time_row['first']);
-        $hours = floor($diff / 3600);
-        $message .= "⏱️ <b>Timeframe:</b> Last " . ($hours > 0 ? "$hours hours" : "few minutes") . "\n";
+    if ($counter == 1) {
+        $message = "📭 <b>No uploads found!</b>\n\n";
+        $message .= "Use /syncall to sync CSV to analytics";
     }
     
-    $message .= "📈 <b>Today's Uploads:</b> " . get_todays_upload_count() . "\n";
-    $message .= "🎯 <b>Upload Rate:</b> " . get_upload_rate() . "/day";
-    
+    $db->close();
     return $message;
 }
 
-function get_last_upload() {
-    $db = new SQLite3(UPLOADS_DB);
+function command_first_upload() {
+    $db = new SQLite3(ANALYTICS_DB);
     
-    $stmt = $db->prepare("SELECT * FROM uploads ORDER BY upload_timestamp DESC LIMIT 1");
+    $stmt = $db->prepare("SELECT * FROM uploads ORDER BY timestamp ASC LIMIT 1");
     $result = $stmt->execute();
-    $upload = $result->fetchArray(SQLITE3_ASSOC);
+    $row = $result->fetchArray(SQLITE3_ASSOC);
     
-    if (!$upload) {
+    if (!$row) {
         $db->close();
-        return "📭 No uploads found!";
+        return "📭 <b>No uploads in analytics!</b>\n\nUse /syncall command";
     }
     
-    $message = "📤 <b>LAST UPLOAD</b>\n\n";
-    $message .= "🎬 <b>Title:</b> " . htmlspecialchars($upload['file_name']) . "\n";
-    $message .= "📅 <b>Date:</b> " . date('d M Y', strtotime($upload['upload_date'])) . 
-               " (" . get_day_name($upload['upload_date']) . ")\n";
-    $message .= "⏰ <b>Time:</b> " . $upload['upload_time'] . "\n";
-    $message .= "⏳ <b>Uploaded:</b> " . time_ago($upload['upload_timestamp']) . " ago\n\n";
+    $message = "🥇 <b>FIRST UPLOAD EVER</b>\n\n";
+    $message .= "🎬 <b>Title:</b> " . htmlspecialchars($row['movie_name']) . "\n";
+    $message .= "📅 <b>Date:</b> " . date('d M Y', strtotime($row['upload_date'])) . "\n";
+    $message .= "📊 <b>Quality:</b> " . $row['quality'] . "\n";
+    $message .= "🗣️ <b>Language:</b> " . $row['language'] . "\n";
+    $message .= "📁 <b>Category:</b> " . $row['category'] . "\n";
+    $message .= "💾 <b>Size:</b> " . $row['size'] . "\n\n";
     
-    $message .= "📊 <b>Details:</b>\n";
-    $message .= "• Quality: " . $upload['quality'] . "\n";
-    $message .= "• Language: " . $upload['language'] . "\n";
-    $message .= "• Category: " . $upload['category'] . "\n";
-    $message .= "• Size: " . $upload['file_size'] . "\n\n";
+    $days_ago = floor((time() - strtotime($row['timestamp'])) / 86400);
+    $message .= "⏳ <b>Uploaded:</b> $days_ago days ago\n";
     
-    // Get previous upload for comparison
-    $prev_stmt = $db->prepare("SELECT * FROM uploads WHERE upload_timestamp < ? ORDER BY upload_timestamp DESC LIMIT 1");
-    $prev_stmt->bindValue(1, $upload['upload_timestamp'], SQLITE3_TEXT);
-    $prev_result = $prev_stmt->execute();
-    $prev_upload = $prev_result->fetchArray(SQLITE3_ASSOC);
-    
-    if ($prev_upload) {
-        $time_diff = strtotime($upload['upload_timestamp']) - strtotime($prev_upload['upload_timestamp']);
-        $hours = floor($time_diff / 3600);
-        $minutes = floor(($time_diff % 3600) / 60);
-        $message .= "⏱️ <b>Time Since Previous:</b> ";
-        if ($hours > 0) $message .= "$hours hours ";
-        $message .= "$minutes minutes\n";
-    }
+    // Total count
+    $total = $db->querySingle("SELECT COUNT(*) FROM uploads");
+    $message .= "📈 <b>Total Uploads Since:</b> $total\n\n";
+    $message .= "📍 <b>Our journey started here!</b>";
     
     $db->close();
-    
-    $message .= "📈 <b>Today's Uploads:</b> " . get_todays_upload_count() . " files\n";
-    $message .= "🎯 <b>Next Expected:</b> " . predict_next_upload();
-    
     return $message;
 }
 
-function get_total_uploads_stats() {
-    $db = new SQLite3(UPLOADS_DB);
+function command_total_stats() {
+    $db = new SQLite3(ANALYTICS_DB);
     
-    // Get total count
-    $stmt = $db->prepare("SELECT COUNT(*) as total FROM uploads");
-    $result = $stmt->execute();
-    $total_row = $result->fetchArray(SQLITE3_ASSOC);
-    $total = $total_row['total'];
+    $total = $db->querySingle("SELECT COUNT(*) FROM uploads");
     
     if ($total == 0) {
         $db->close();
-        return "📭 No uploads yet!";
+        return "📭 <b>No analytics data!</b>\n\nUse /syncall to import data";
     }
     
-    // Get type distribution
-    $type_stmt = $db->prepare("SELECT 
-        COUNT(*) as total,
-        SUM(CASE WHEN category = 'Movie' THEN 1 ELSE 0 END) as movies,
-        SUM(CASE WHEN category = 'Series' THEN 1 ELSE 0 END) as series,
-        SUM(CASE WHEN category NOT IN ('Movie', 'Series') THEN 1 ELSE 0 END) as other
-        FROM uploads");
-    $type_result = $type_stmt->execute();
-    $type_row = $type_result->fetchArray(SQLITE3_ASSOC);
+    // Category distribution
+    $movies = $db->querySingle("SELECT COUNT(*) FROM uploads WHERE category = 'Movie'");
+    $series = $db->querySingle("SELECT COUNT(*) FROM uploads WHERE category = 'Series'");
     
-    // Get quality distribution
-    $qual_stmt = $db->prepare("SELECT quality, COUNT(*) as count FROM uploads 
-                              WHERE quality != 'Unknown' GROUP BY quality ORDER BY count DESC LIMIT 5");
-    $qual_result = $qual_stmt->execute();
+    // Quality distribution
+    $quality_result = $db->query("SELECT quality, COUNT(*) as count FROM uploads 
+                                 WHERE quality != '' GROUP BY quality ORDER BY count DESC");
     
     $quality_stats = "";
-    while ($row = $qual_result->fetchArray(SQLITE3_ASSOC)) {
+    while ($row = $quality_result->fetchArray(SQLITE3_ASSOC)) {
         $percentage = round(($row['count'] / $total) * 100);
-        $quality_stats .= "• " . $row['quality'] . ": " . $row['count'] . " (" . $percentage . "%)\n";
+        $quality_stats .= "• " . $row['quality'] . ": " . $row['count'] . " ($percentage%)\n";
     }
     
-    // Get language distribution
-    $lang_stmt = $db->prepare("SELECT language, COUNT(*) as count FROM uploads 
-                              GROUP BY language ORDER BY count DESC LIMIT 5");
-    $lang_result = $lang_stmt->execute();
+    // Language distribution
+    $lang_result = $db->query("SELECT language, COUNT(*) as count FROM uploads 
+                              WHERE language != '' GROUP BY language ORDER BY count DESC");
     
     $language_stats = "";
     while ($row = $lang_result->fetchArray(SQLITE3_ASSOC)) {
         $percentage = round(($row['count'] / $total) * 100);
-        $language_stats .= "• " . $row['language'] . ": " . $row['count'] . " (" . $percentage . "%)\n";
+        $language_stats .= "• " . $row['language'] . ": " . $row['count'] . " ($percentage%)\n";
     }
     
-    // Get date range
-    $date_stmt = $db->prepare("SELECT MIN(upload_date) as first_date, MAX(upload_date) as last_date FROM uploads");
+    // Date range
+    $date_stmt = $db->prepare("SELECT MIN(upload_date) as first, MAX(upload_date) as last FROM uploads");
     $date_result = $date_stmt->execute();
     $date_row = $date_result->fetchArray(SQLITE3_ASSOC);
     
-    $days_active = days_between($date_row['first_date'], $date_row['last_date']) + 1;
-    $avg_per_day = round($total / max(1, $days_active), 2);
+    $first_date = $date_row['first'] ? date('d M Y', strtotime($date_row['first'])) : 'Unknown';
+    $last_date = $date_row['last'] ? date('d M Y', strtotime($date_row['last'])) : 'Unknown';
     
     $db->close();
     
     $message = "📊 <b>TOTAL UPLOADS STATISTICS</b>\n\n";
     $message .= "🎯 <b>Grand Total:</b> $total uploads\n";
-    $message .= "📅 <b>Time Period:</b> " . date('d M Y', strtotime($date_row['first_date'])) . 
-               " to " . date('d M Y', strtotime($date_row['last_date'])) . "\n";
-    $message .= "📆 <b>Active Days:</b> $days_active days\n";
-    $message .= "📈 <b>Average per Day:</b> $avg_per_day uploads\n\n";
+    $message .= "📅 <b>First Upload:</b> $first_date\n";
+    $message .= "📅 <b>Last Upload:</b> $last_date\n\n";
     
     $message .= "📁 <b>Category Distribution:</b>\n";
-    $message .= "• Movies: " . $type_row['movies'] . "\n";
-    $message .= "• Series: " . $type_row['series'] . "\n";
-    $message .= "• Other: " . $type_row['other'] . "\n\n";
+    $message .= "• Movies: $movies\n";
+    $message .= "• Series: $series\n\n";
     
     if (!empty($quality_stats)) {
-        $message .= "🎬 <b>Quality Distribution (Top 5):</b>\n$quality_stats\n";
+        $message .= "🎬 <b>Quality Distribution:</b>\n$quality_stats\n";
     }
     
     if (!empty($language_stats)) {
-        $message .= "🗣️ <b>Language Distribution (Top 5):</b>\n$language_stats\n";
+        $message .= "🗣️ <b>Language Distribution:</b>\n$language_stats\n";
     }
-    
-    $message .= "📈 <b>Milestones:</b>\n";
-    $message .= "• 1000 uploads: " . ($total >= 1000 ? "✅ Achieved" : "⏳ " . (1000 - $total) . " to go") . "\n";
-    $message .= "• 5000 uploads: " . ($total >= 5000 ? "✅ Achieved" : "⏳ " . (5000 - $total) . " to go") . "\n";
-    $message .= "• 10000 uploads: " . ($total >= 10000 ? "✅ Achieved" : "⏳ " . (10000 - $total) . " to go") . "\n";
     
     return $message;
 }
 
-function get_middle_upload() {
-    $db = new SQLite3(UPLOADS_DB);
+function command_today_stats() {
+    $today = date('Y-m-d');
+    $db = new SQLite3(ANALYTICS_DB);
     
-    // Get total count
-    $stmt = $db->prepare("SELECT COUNT(*) as total FROM uploads");
+    $stmt = $db->prepare("SELECT COUNT(*) as count FROM uploads WHERE upload_date = ?");
+    $stmt->bindValue(1, $today, SQLITE3_TEXT);
     $result = $stmt->execute();
-    $total_row = $result->fetchArray(SQLITE3_ASSOC);
-    $total = $total_row['total'];
+    $row = $result->fetchArray(SQLITE3_ASSOC);
+    $today_count = $row['count'];
     
-    if ($total == 0) {
-        $db->close();
-        return "📭 No uploads yet!";
-    }
-    
-    $middle_position = ceil($total / 2);
-    
-    // Get middle upload
-    $stmt = $db->prepare("SELECT * FROM uploads ORDER BY upload_timestamp LIMIT 1 OFFSET ?");
-    $stmt->bindValue(1, $middle_position - 1, SQLITE3_INTEGER);
+    // Yesterday count
+    $yesterday = date('Y-m-d', strtotime('-1 day'));
+    $stmt = $db->prepare("SELECT COUNT(*) as count FROM uploads WHERE upload_date = ?");
+    $stmt->bindValue(1, $yesterday, SQLITE3_TEXT);
     $result = $stmt->execute();
-    $upload = $result->fetchArray(SQLITE3_ASSOC);
+    $row = $result->fetchArray(SQLITE3_ASSOC);
+    $yesterday_count = $row['count'];
     
-    if (!$upload) {
-        $db->close();
-        return "❌ Could not find middle upload!";
-    }
-    
-    $message = "🎯 <b>MIDDLE UPLOAD</b>\n\n";
-    $message .= "📍 <b>Position:</b> $middle_position of $total (50% milestone)\n\n";
-    
-    $message .= "🎬 <b>Title:</b> " . htmlspecialchars($upload['file_name']) . "\n";
-    $message .= "📅 <b>Date:</b> " . date('d M Y', strtotime($upload['upload_date'])) . "\n";
-    $message .= "⏰ <b>Time:</b> " . $upload['upload_time'] . "\n";
-    $message .= "📊 <b>Quality:</b> " . $upload['quality'] . "\n";
-    $message .= "🗣️ <b>Language:</b> " . $upload['language'] . "\n\n";
-    
-    // Get counts before and after
-    $before_stmt = $db->prepare("SELECT COUNT(*) as count FROM uploads WHERE upload_timestamp < ?");
-    $before_stmt->bindValue(1, $upload['upload_timestamp'], SQLITE3_TEXT);
-    $before_result = $before_stmt->execute();
-    $before_row = $before_result->fetchArray(SQLITE3_ASSOC);
-    
-    $after_stmt = $db->prepare("SELECT COUNT(*) as count FROM uploads WHERE upload_timestamp > ?");
-    $after_stmt->bindValue(1, $upload['upload_timestamp'], SQLITE3_TEXT);
-    $after_result = $after_stmt->execute();
-    $after_row = $after_result->fetchArray(SQLITE3_ASSOC);
-    
-    $message .= "📈 <b>Position Analysis:</b>\n";
-    $message .= "• Before this: " . $before_row['count'] . " uploads\n";
-    $message .= "• After this: " . $after_row['count'] . " uploads\n\n";
-    
-    $message .= "⏳ <b>Halfway Point:</b> " . time_ago($upload['upload_timestamp']) . " ago\n";
-    $message .= "📊 <b>Completion:</b> 50% of total uploads\n\n";
-    
-    $db->close();
-    
-    $message .= "🎉 <b>This marks the halfway point of our upload journey!</b>";
-    
-    return $message;
-}
-
-function get_upload_date_stats($date = null) {
-    if ($date === null) {
-        $date = date('Y-m-d');
-    }
-    
-    $db = new SQLite3(UPLOADS_DB);
-    
-    $stmt = $db->prepare("SELECT * FROM uploads WHERE upload_date = ? ORDER BY upload_time");
-    $stmt->bindValue(1, $date, SQLITE3_TEXT);
+    // Today's uploads details
+    $stmt = $db->prepare("SELECT * FROM uploads WHERE upload_date = ? ORDER BY timestamp DESC");
+    $stmt->bindValue(1, $today, SQLITE3_TEXT);
     $result = $stmt->execute();
     
-    $uploads = [];
+    $message = "📅 <b>TODAY'S UPLOADS - " . date('d M Y') . "</b>\n\n";
+    $message .= "📊 <b>Total Today:</b> $today_count uploads\n";
+    
+    if ($yesterday_count > 0) {
+        $change = $today_count - $yesterday_count;
+        $change_text = ($change > 0) ? "📈 +$change" : (($change < 0) ? "📉 $change" : "📊 Same");
+        $message .= "📈 <b>Vs Yesterday:</b> $change_text\n";
+    }
+    
+    $message .= "\n📋 <b>Today's Uploads:</b>\n";
+    
+    $counter = 1;
     while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-        $uploads[] = $row;
+        $time = date('H:i', strtotime($row['timestamp']));
+        $short_name = (strlen($row['movie_name']) > 30) ? 
+                     substr($row['movie_name'], 0, 30) . "..." : $row['movie_name'];
+        
+        $message .= "$counter. <b>$time</b> - " . htmlspecialchars($short_name) . "\n";
+        $counter++;
     }
     
-    if (empty($uploads)) {
-        $db->close();
-        return "📭 No uploads found for " . date('d M Y', strtotime($date));
-    }
-    
-    $message = "📅 <b>UPLOADS ON " . date('d M Y', strtotime($date)) . "</b>\n";
-    $message .= "📊 <b>Day:</b> " . get_day_name($date) . "\n";
-    $message .= "📈 <b>Total Uploads:</b> " . count($uploads) . "\n\n";
-    
-    $message .= "⏰ <b>Upload Timeline:</b>\n";
-    foreach ($uploads as $index => $upload) {
-        $short_name = strlen($upload['file_name']) > 30 ? 
-                     substr($upload['file_name'], 0, 30) . "..." : $upload['file_name'];
-        $message .= ($index + 1) . ". <b>" . substr($upload['upload_time'], 0, 5) . "</b> - " . 
-                   htmlspecialchars($short_name) . "\n";
-    }
-    
-    // Hourly distribution
-    $hourly = [];
-    foreach ($uploads as $upload) {
-        $hour = (int)substr($upload['upload_time'], 0, 2);
-        if (!isset($hourly[$hour])) {
-            $hourly[$hour] = 0;
-        }
-        $hourly[$hour]++;
-    }
-    
-    if (!empty($hourly)) {
-        $message .= "\n📊 <b>Hourly Distribution:</b>\n";
-        arsort($hourly);
-        foreach ($hourly as $hour => $count) {
-            $message .= "• " . sprintf("%02d:00", $hour) . " - $count uploads\n";
-        }
-    }
-    
-    // Compare with previous day
-    $prev_date = date('Y-m-d', strtotime($date . ' -1 day'));
-    $prev_stmt = $db->prepare("SELECT COUNT(*) as count FROM uploads WHERE upload_date = ?");
-    $prev_stmt->bindValue(1, $prev_date, SQLITE3_TEXT);
-    $prev_result = $prev_stmt->execute();
-    $prev_row = $prev_result->fetchArray(SQLITE3_ASSOC);
-    
-    if ($prev_row['count'] > 0) {
-        $change = count($uploads) - $prev_row['count'];
-        $change_text = $change > 0 ? "📈 +$change" : ($change < 0 ? "📉 $change" : "📊 No change");
-        $message .= "\n📈 <b>Vs Previous Day:</b> $change_text\n";
+    if ($counter == 1) {
+        $message .= "No uploads today yet.\n";
     }
     
     $db->close();
-    
-    $message .= "\n🎯 <b>Busiest Hour:</b> " . get_busiest_hour_for_date($date) . "\n";
-    $message .= "📊 <b>Average per Hour:</b> " . round(count($uploads) / max(1, count($hourly)), 2) . "\n";
-    
     return $message;
 }
 
-function get_upload_calendar($month = null, $year = null) {
-    if ($month === null) $month = date('m');
+function command_upload_calendar($month = null, $year = null) {
+    if ($month === null) $month = date('n');
     if ($year === null) $year = date('Y');
     
-    $db = new SQLite3(UPLOADS_DB);
+    $db = new SQLite3(ANALYTICS_DB);
     
-    $start_date = "$year-$month-01";
+    $start_date = "$year-" . sprintf("%02d", $month) . "-01";
     $end_date = date('Y-m-t', strtotime($start_date));
     
     $stmt = $db->prepare("SELECT upload_date, COUNT(*) as count FROM uploads 
@@ -1207,29 +760,29 @@ function get_upload_calendar($month = null, $year = null) {
     
     $daily_counts = [];
     while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-        $day = date('d', strtotime($row['upload_date']));
+        $day = date('j', strtotime($row['upload_date']));
         $daily_counts[$day] = $row['count'];
     }
     
-    $month_name = get_month_name($month);
+    $month_name = date('F', strtotime($start_date));
     $first_day = date('w', strtotime($start_date));
     $days_in_month = date('t', strtotime($start_date));
     
     $message = "📅 <b>UPLOAD CALENDAR - $month_name $year</b>\n\n";
     
-    // Weekday headers
-    $weekdays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+    // Week headers
+    $weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     $message .= implode(" ", $weekdays) . "\n";
     
     $day_counter = 1;
     $week = "";
     
-    // Add empty cells for days before the first day
+    // Empty spaces for first week
     for ($i = 0; $i < $first_day; $i++) {
         $week .= "   ";
     }
     
-    // Fill in the days
+    // Calendar grid
     while ($day_counter <= $days_in_month) {
         for ($i = $first_day; $i < 7 && $day_counter <= $days_in_month; $i++) {
             $day_str = sprintf("%2d", $day_counter);
@@ -1261,18 +814,20 @@ function get_upload_calendar($month = null, $year = null) {
     // Statistics
     $total_uploads = array_sum($daily_counts);
     $active_days = count($daily_counts);
-    $avg_per_active_day = $active_days > 0 ? round($total_uploads / $active_days, 2) : 0;
     
-    $message .= "\n📊 <b>Monthly Statistics:</b>\n";
+    $message .= "\n📊 <b>Statistics:</b>\n";
     $message .= "• Total Uploads: $total_uploads\n";
     $message .= "• Active Days: $active_days\n";
-    $message .= "• Average per Active Day: $avg_per_active_day\n";
     
-    // Find busiest day
+    if ($active_days > 0) {
+        $avg = round($total_uploads / $active_days, 2);
+        $message .= "• Average per Day: $avg\n";
+    }
+    
     if (!empty($daily_counts)) {
-        $busiest_day = array_keys($daily_counts, max($daily_counts))[0];
-        $busiest_count = max($daily_counts);
-        $message .= "• Busiest Day: $busiest_day ($busiest_count uploads)\n";
+        $max_day = array_keys($daily_counts, max($daily_counts))[0];
+        $max_count = max($daily_counts);
+        $message .= "• Busiest Day: $max_day ($max_count uploads)\n";
     }
     
     $message .= "\n📈 <b>Legend:</b>\n";
@@ -1282,264 +837,256 @@ function get_upload_calendar($month = null, $year = null) {
     $message .= "⬜ = No uploads\n";
     
     $db->close();
-    
     return $message;
 }
 
-// ================= HELPER FUNCTIONS =================
+// ==================== COPYRIGHT PROTECTION SYSTEM ====================
+function schedule_deletion($chat_id, $message_id, $file_name, $file_size = '', $quality = '') {
+    $db = new SQLite3(ANALYTICS_DB);
+    
+    $delete_time = date('Y-m-d H:i:s', time() + (DELETE_AFTER_MINUTES * 60));
+    
+    $stmt = $db->prepare("INSERT INTO deletions 
+        (file_name, chat_id, message_id, delete_time) 
+        VALUES (?, ?, ?, ?)");
+    
+    $stmt->bindValue(1, $file_name, SQLITE3_TEXT);
+    $stmt->bindValue(2, $chat_id, SQLITE3_INTEGER);
+    $stmt->bindValue(3, $message_id, SQLITE3_INTEGER);
+    $stmt->bindValue(4, $delete_time, SQLITE3_TEXT);
+    
+    $stmt->execute();
+    $schedule_id = $db->lastInsertRowID();
+    
+    $db->close();
+    
+    // Send warning message
+    send_deletion_warning($chat_id, $message_id, $file_name, $file_size, $quality, $delete_time, $schedule_id);
+    
+    log_message("DELETION", "Scheduled: $file_name (ID: $schedule_id)");
+    return $schedule_id;
+}
+
+function send_deletion_warning($chat_id, $message_id, $file_name, $file_size, $quality, $delete_time, $schedule_id) {
+    $current_time = date("g:i A");
+    $delete_formatted = date("g:i A", strtotime($delete_time));
+    
+    // Extract movie info
+    $info = extract_file_info($file_name);
+    $display_name = $info['title'] ?: $file_name;
+    
+    // Calculate progress
+    $total_seconds = DELETE_AFTER_MINUTES * 60;
+    $elapsed = time() - (strtotime($delete_time) - $total_seconds);
+    $percentage = min(100, max(0, ($elapsed / $total_seconds) * 100));
+    $progress_bar = get_progress_bar($percentage);
+    $countdown = get_countdown_timer($delete_time);
+    
+    $message = "🎬 <b>" . htmlspecialchars($display_name) . "</b>";
+    if ($quality) {
+        $message .= " [$quality]";
+    }
+    if ($file_size) {
+        $message .= "\n💾 " . htmlspecialchars($file_size);
+    }
+    
+    $message .= "\n═══════════════════════════════\n";
+    $message .= "🚨 <b>COPYRIGHT PROTECTION ALERT</b> 🚨\n";
+    $message .= "═══════════════════════════════\n";
+    $message .= "⚠️ <b>Auto-Delete:</b> " . DELETE_AFTER_MINUTES . " Minutes\n";
+    $message .= "🛡️ <b>Protection:</b> Copyright Shield Active\n\n";
+    
+    $message .= "✅ <b>ACTION REQUIRED:</b>\n";
+    $message .= "├─ 📤 Forward File Now\n";
+    $message .= "├─ 💾 Save to Device/Cloud\n";
+    $message .= "├─ ⬇️ Download Immediately\n";
+    $message .= "└─ ⚠️ Avoid Auto-Deletion\n\n";
+    
+    $message .= "⏳ <b>Countdown:</b> $countdown\n";
+    $message .= "$progress_bar " . round($percentage) . "%\n\n";
+    
+    $message .= "⏰ Uploaded: $current_time\n";
+    $message .= "🗑️ Deletes at: $delete_formatted\n";
+    $message .= "🔔 Channel: " . MAIN_CHANNEL;
+    
+    $keyboard = [
+        'inline_keyboard' => [
+            [
+                ['text' => '🔗 JOIN CHANNEL', 'url' => 'https://t.me/' . str_replace('@', '', MAIN_CHANNEL)],
+                ['text' => '⏰ COUNTDOWN', 'callback_data' => 'countdown_' . $schedule_id]
+            ],
+            [
+                ['text' => '✅ I SAVED IT', 'callback_data' => 'saved_' . $schedule_id],
+                ['text' => '❌ DELETE NOW', 'callback_data' => 'delete_now_' . $schedule_id]
+            ]
+        ]
+    ];
+    
+    send_message($chat_id, $message, $keyboard, 'HTML');
+}
+
+function process_deletions() {
+    $db = new SQLite3(ANALYTICS_DB);
+    $now = date('Y-m-d H:i:s');
+    
+    $stmt = $db->prepare("SELECT * FROM deletions WHERE delete_time <= ? AND status = 'pending'");
+    $stmt->bindValue(1, $now, SQLITE3_TEXT);
+    $result = $stmt->execute();
+    
+    $deleted = 0;
+    
+    while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+        $delete_result = delete_message($row['chat_id'], $row['message_id']);
+        
+        if ($delete_result && $delete_result['ok']) {
+            // Update status
+            $update_stmt = $db->prepare("UPDATE deletions SET status = 'deleted' WHERE id = ?");
+            $update_stmt->bindValue(1, $row['id'], SQLITE3_INTEGER);
+            $update_stmt->execute();
+            
+            // Send notification
+            $final_msg = "⏰ <b>TIME'S UP!</b>\n\n";
+            $final_msg .= "🗑️ <b>" . htmlspecialchars($row['file_name']) . "</b>\n";
+            $final_msg .= "has been automatically deleted.\n\n";
+            $final_msg .= "⚠️ Always forward files immediately!\n";
+            $final_msg .= "🔗 " . MAIN_CHANNEL;
+            
+            send_message($row['chat_id'], $final_msg, null, 'HTML');
+            
+            $deleted++;
+            log_message("DELETE", "Deleted: {$row['file_name']}");
+        }
+    }
+    
+    $db->close();
+    return $deleted;
+}
+
+// ==================== HELPER FUNCTIONS ====================
 function time_ago($datetime) {
     $time = strtotime($datetime);
     $now = time();
     $diff = $now - $time;
     
-    if ($diff < 60) {
-        return $diff . " seconds ago";
-    } elseif ($diff < 3600) {
-        return floor($diff / 60) . " minutes ago";
-    } elseif ($diff < 86400) {
-        return floor($diff / 3600) . " hours ago";
-    } elseif ($diff < 604800) {
-        return floor($diff / 86400) . " days ago";
-    } else {
-        return date('d M', $time);
-    }
+    if ($diff < 60) return $diff . " seconds ago";
+    elseif ($diff < 3600) return floor($diff / 60) . " minutes ago";
+    elseif ($diff < 86400) return floor($diff / 3600) . " hours ago";
+    elseif ($diff < 604800) return floor($diff / 86400) . " days ago";
+    else return date('d M Y', $time);
 }
 
-function days_between($date1, $date2) {
-    $datetime1 = new DateTime($date1);
-    $datetime2 = new DateTime($date2);
-    $interval = $datetime1->diff($datetime2);
-    return $interval->days;
-}
-
-function get_day_name($date) {
-    $days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    $day_num = date('w', strtotime($date));
-    return $days[$day_num];
-}
-
-function get_month_name($month_num) {
-    $months = ['January', 'February', 'March', 'April', 'May', 'June', 
-               'July', 'August', 'September', 'October', 'November', 'December'];
-    return $months[$month_num - 1];
-}
-
-function get_todays_upload_count() {
-    $db = new SQLite3(UPLOADS_DB);
-    $today = date('Y-m-d');
-    $stmt = $db->prepare("SELECT COUNT(*) as count FROM uploads WHERE upload_date = ?");
-    $stmt->bindValue(1, $today, SQLITE3_TEXT);
-    $result = $stmt->execute();
-    $row = $result->fetchArray(SQLITE3_ASSOC);
-    $db->close();
-    return $row['count'] ?? 0;
-}
-
-function get_upload_rate() {
-    $db = new SQLite3(UPLOADS_DB);
+function get_progress_bar($percentage, $length = 20) {
+    $filled = round(($percentage / 100) * $length);
+    $empty = $length - $filled;
     
-    // Last 7 days
-    $week_ago = date('Y-m-d', strtotime('-7 days'));
-    $stmt = $db->prepare("SELECT COUNT(*) as count FROM uploads WHERE upload_date >= ?");
-    $stmt->bindValue(1, $week_ago, SQLITE3_TEXT);
-    $result = $stmt->execute();
-    $row = $result->fetchArray(SQLITE3_ASSOC);
-    $db->close();
+    $bar = "";
+    for ($i = 0; $i < $filled; $i++) $bar .= "🟩";
+    for ($i = 0; $i < $empty; $i++) $bar .= "⬜";
     
-    return round(($row['count'] ?? 0) / 7, 1);
+    return $bar;
 }
 
-function predict_next_upload() {
-    $db = new SQLite3(UPLOADS_DB);
+function get_countdown_timer($delete_time) {
+    $remaining = strtotime($delete_time) - time();
+    if ($remaining <= 0) return "00:00";
     
-    // Get last 5 upload times
-    $stmt = $db->prepare("SELECT upload_timestamp FROM uploads ORDER BY upload_timestamp DESC LIMIT 5");
-    $result = $stmt->execute();
+    $minutes = floor($remaining / 60);
+    $seconds = $remaining % 60;
     
-    $timestamps = [];
-    while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-        $timestamps[] = strtotime($row['upload_timestamp']);
+    return sprintf("%02d:%02d", $minutes, $seconds);
+}
+
+function extract_file_info($file_name) {
+    $info = ['title' => '', 'year' => '', 'quality' => ''];
+    
+    // Extract year
+    if (preg_match('/\((\d{4})\)/', $file_name, $matches)) {
+        $info['year'] = $matches[1];
     }
     
-    if (count($timestamps) < 2) {
-        $db->close();
-        return "Insufficient data";
+    // Extract quality
+    if (preg_match('/(\d{3,4}p|HD|FHD|UHD|WEB\-DL|WEBRip|BluRay)/i', $file_name, $matches)) {
+        $info['quality'] = strtoupper($matches[1]);
     }
     
-    // Calculate average interval
-    $intervals = [];
-    for ($i = 0; $i < count($timestamps) - 1; $i++) {
-        $intervals[] = $timestamps[$i] - $timestamps[$i + 1];
-    }
+    // Clean title
+    $title = $file_name;
+    $title = preg_replace('/\.(mkv|mp4|avi|mov|wmv|flv|webm)$/i', '', $title);
+    $title = preg_replace('/\((\d{4})\)/', '', $title);
+    $title = preg_replace('/(\d{3,4}p|HD|FHD|UHD|WEB\-DL|WEBRip|BluRay)/i', '', $title);
+    $title = trim(preg_replace('/[\._\-]+/', ' ', $title));
+    $title = preg_replace('/\s+/', ' ', $title);
     
-    $avg_interval = array_sum($intervals) / count($intervals);
-    $db->close();
-    
-    if ($avg_interval < 3600) {
-        $minutes = round($avg_interval / 60);
-        return "Within $minutes minutes";
-    } else {
-        $hours = round($avg_interval / 3600, 1);
-        return "In about $hours hours";
-    }
+    $info['title'] = ucwords($title);
+    return $info;
 }
 
-function get_busiest_hour_for_date($date) {
-    $db = new SQLite3(UPLOADS_DB);
+function get_user_stats($user_id) {
+    $users = json_decode(file_get_contents(USERS_FILE), true);
     
-    $stmt = $db->prepare("SELECT 
-        substr(upload_time, 1, 2) as hour,
-        COUNT(*) as count
-        FROM uploads 
-        WHERE upload_date = ?
-        GROUP BY hour 
-        ORDER BY count DESC 
-        LIMIT 1");
-    $stmt->bindValue(1, $date, SQLITE3_TEXT);
-    $result = $stmt->execute();
-    $row = $result->fetchArray(SQLITE3_ASSOC);
-    $db->close();
-    
-    if ($row) {
-        return sprintf("%02d:00", $row['hour']) . " (" . $row['count'] . " uploads)";
-    }
-    
-    return "No data";
-}
-
-function update_user_activity($user_id, $action) {
-    if (!$user_id) return;
-    
-    $users_data = json_decode(file_get_contents(USERS_FILE), true);
-    
-    if (!isset($users_data['users'][$user_id])) {
-        $users_data['users'][$user_id] = [
-            'first_name' => '',
-            'last_name' => '',
-            'username' => '',
-            'joined' => date('Y-m-d H:i:s'),
+    if (!isset($users['users'][$user_id])) {
+        $users['users'][$user_id] = [
+            'join_date' => date('Y-m-d'),
             'last_active' => date('Y-m-d H:i:s'),
-            'points' => 0,
-            'total_searches' => 0,
-            'total_downloads' => 0,
-            'request_count' => 0
+            'search_count' => 0,
+            'request_count' => 0,
+            'points' => 0
         ];
     }
     
-    // Update based on action
+    return $users['users'][$user_id];
+}
+
+function update_user_stats($user_id, $action) {
+    $users = json_decode(file_get_contents(USERS_FILE), true);
+    
+    if (!isset($users['users'][$user_id])) {
+        $users['users'][$user_id] = [
+            'join_date' => date('Y-m-d'),
+            'last_active' => date('Y-m-d H:i:s'),
+            'search_count' => 0,
+            'request_count' => 0,
+            'points' => 0
+        ];
+    }
+    
     switch ($action) {
         case 'search':
-            $users_data['users'][$user_id]['total_searches']++;
-            $users_data['users'][$user_id]['points'] += 1;
-            break;
-        case 'download':
-            $users_data['users'][$user_id]['total_downloads']++;
-            $users_data['users'][$user_id]['points'] += 3;
+            $users['users'][$user_id]['search_count']++;
+            $users['users'][$user_id]['points'] += 1;
             break;
         case 'request':
-            $users_data['users'][$user_id]['request_count']++;
-            $users_data['users'][$user_id]['points'] += 2;
+            $users['users'][$user_id]['request_count']++;
+            $users['users'][$user_id]['points'] += 2;
             break;
     }
     
-    $users_data['users'][$user_id]['last_active'] = date('Y-m-d H:i:s');
-    file_put_contents(USERS_FILE, json_encode($users_data, JSON_PRETTY_PRINT));
+    $users['users'][$user_id]['last_active'] = date('Y-m-d H:i:s');
+    file_put_contents(USERS_FILE, json_encode($users, JSON_PRETTY_PRINT));
 }
 
-// ================= BACKUP SYSTEM =================
-function auto_backup() {
-    bot_log("Starting auto-backup process...");
-    
-    $backup_files = [CSV_FILE, USERS_FILE, STATS_FILE, REQUEST_FILE, UPLOADS_DB];
-    $backup_dir = BACKUP_DIR . date('Y-m-d_H-i-s');
-    
-    if (!file_exists($backup_dir)) {
-        mkdir($backup_dir, 0777, true);
-    }
-    
-    // Backup files
-    foreach ($backup_files as $file) {
-        if (file_exists($file)) {
-            copy($file, $backup_dir . '/' . basename($file) . '.bak');
-        }
-    }
-    
-    // Create summary
-    $summary = create_backup_summary();
-    file_put_contents($backup_dir . '/backup_summary.txt', $summary);
-    
-    // Clean old backups
-    clean_old_backups();
-    
-    bot_log("Auto-backup completed: $backup_dir");
-    return true;
-}
-
-function create_backup_summary() {
-    $stats = json_decode(file_get_contents(STATS_FILE), true);
-    $users_data = json_decode(file_get_contents(USERS_FILE), true);
-    
-    $db = new SQLite3(UPLOADS_DB);
-    $upload_count = $db->querySingle("SELECT COUNT(*) FROM uploads");
-    $db->close();
-    
-    $summary = "📊 BACKUP SUMMARY\n";
-    $summary .= "================\n\n";
-    $summary .= "📅 Backup Date: " . date('Y-m-d H:i:s') . "\n";
-    $summary .= "🤖 Bot: Entertainment Tadka Mega Bot\n\n";
-    $summary .= "📈 STATISTICS:\n";
-    $summary .= "• Total Movies: " . ($stats['total_movies'] ?? 0) . "\n";
-    $summary .= "• Total Users: " . count($users_data['users'] ?? []) . "\n";
-    $summary .= "• Total Searches: " . ($stats['total_searches'] ?? 0) . "\n";
-    $summary .= "• Total Uploads Tracked: $upload_count\n";
-    $summary .= "• Active Systems: Search + Protection + Analytics\n";
-    
-    return $summary;
-}
-
-function clean_old_backups() {
-    $backups = glob(BACKUP_DIR . '*', GLOB_ONLYDIR);
-    if (count($backups) > 7) {
-        usort($backups, function($a, $b) {
-            return filemtime($a) - filemtime($b);
-        });
-        
-        $to_delete = array_slice($backups, 0, count($backups) - 7);
-        foreach ($to_delete as $dir) {
-            $files = glob($dir . '/*');
-            foreach ($files as $file) @unlink($file);
-            @rmdir($dir);
-        }
-        
-        bot_log("Cleaned " . count($to_delete) . " old backups");
-    }
-}
-
-// ================= MAIN UPDATE HANDLER =================
+// ==================== MAIN UPDATE HANDLER ====================
 $update = json_decode(file_get_contents('php://input'), true);
 
 if ($update) {
-    // Check maintenance mode
-    global $MAINTENANCE_MODE, $MAINTENANCE_MESSAGE;
+    // Initialize system
+    initialize_system();
+    
+    // Check maintenance
+    global $MAINTENANCE_MODE, $MAINTENANCE_MSG;
     if ($MAINTENANCE_MODE && isset($update['message'])) {
         $chat_id = $update['message']['chat']['id'];
-        sendMessage($chat_id, $MAINTENANCE_MESSAGE, null, 'HTML');
+        send_message($chat_id, $MAINTENANCE_MSG);
         exit;
     }
     
-    // Process scheduled tasks
-    $current_minute = date('i');
-    if ($current_minute % 5 == 0) {
-        process_scheduled_deletions();
-        update_progress_bars();
+    // Process scheduled deletions every minute
+    if (date('i') % 1 == 0) { // Every minute
+        $deleted = process_deletions();
+        if ($deleted > 0) {
+            log_message("AUTO_DELETE", "Deleted $deleted files");
+        }
     }
-    
-    if (date('H') == AUTO_BACKUP_HOUR && $current_minute == '00') {
-        auto_backup();
-    }
-    
-    // Load movie cache
-    get_cached_movies();
     
     // Handle messages
     if (isset($update['message'])) {
@@ -1548,12 +1095,11 @@ if ($update) {
         $user_id = $message['from']['id'];
         $text = $message['text'] ?? '';
         
-        // Handle file uploads (for copyright protection)
-        $is_file = isset($message['video']) || isset($message['document']) || 
-                   isset($message['audio']) || isset($message['photo']);
+        // Handle file uploads for copyright protection
+        $has_file = isset($message['video']) || isset($message['document']) || 
+                    isset($message['audio']) || isset($message['photo']);
         
-        if ($is_file && $user_id != ADMIN_ID) {
-            // Extract file info
+        if ($has_file && $user_id != ADMIN_ID) {
             $file_name = '';
             $file_size = '';
             $quality = '';
@@ -1564,84 +1110,47 @@ if ($update) {
             } elseif (isset($message['document'])) {
                 $file_name = $message['document']['file_name'];
                 $file_size = format_size($message['document']['file_size'] ?? 0);
-                $quality = extract_quality_from_name($file_name);
             }
             
             if (isset($message['caption'])) {
                 $file_name = $message['caption'] . ' - ' . $file_name;
-                if (!$quality) {
-                    $quality = extract_quality_from_name($message['caption']);
-                }
             }
             
             if ($file_name) {
-                $schedule_id = schedule_file_deletion(
-                    $chat_id, 
-                    $message['message_id'], 
-                    $file_name, 
-                    $file_size, 
-                    $quality
-                );
-                
-                // Also track as upload
-                track_upload($file_name, $message['message_id'], $quality, $file_size);
-            }
-        }
-        
-        // Handle channel posts (movie additions)
-        if (isset($update['channel_post']) && $update['channel_post']['chat']['id'] == CHANNEL_ID) {
-            $channel_post = $update['channel_post'];
-            $message_id = $channel_post['message_id'];
-            
-            $file_name = '';
-            $quality = 'Unknown';
-            $size = 'Unknown';
-            $language = 'Hindi';
-            
-            if (isset($channel_post['caption'])) {
-                $file_name = $channel_post['caption'];
-                if (stripos($file_name, '1080') !== false) $quality = '1080p';
-                elseif (stripos($file_name, '720') !== false) $quality = '720p';
-                if (stripos($file_name, 'english') !== false) $language = 'English';
-            } elseif (isset($channel_post['text'])) {
-                $file_name = $channel_post['text'];
-            }
-            
-            if (!empty(trim($file_name))) {
-                append_movie($file_name, $message_id, $quality, $size, $language);
+                schedule_deletion($chat_id, $message['message_id'], $file_name, $file_size, $quality);
             }
         }
         
         // Handle commands
         if (!empty($text)) {
-            $command = strtolower(explode(' ', $text)[0]);
+            $command = strtolower(trim(explode(' ', $text)[0]));
             
             switch ($command) {
-                // ================= SEARCH COMMANDS =================
+                // ============ START & HELP ============
                 case '/start':
-                    $welcome = "🎬 <b>Welcome to Entertainment Tadka Mega Bot!</b>\n\n";
-                    $welcome .= "📢 <b>Complete Features:</b>\n";
-                    $welcome .= "• Smart Movie Search\n";
+                    $welcome = "🎬 <b>Entertainment Tadka Mega Bot v5.0</b>\n\n";
+                    $welcome .= "✅ <b>COMPLETE FEATURES:</b>\n";
+                    $welcome .= "• Smart Movie Search System\n";
                     $welcome .= "• Copyright Protection (Auto-delete)\n";
                     $welcome .= "• Upload Analytics & Statistics\n";
-                    $welcome .= "• Complete Backup System\n\n";
+                    $welcome .= "• CSV Auto-Fix & Sync System\n\n";
                     
-                    $welcome .= "🔍 <b>Search Movies:</b> Just type movie name\n";
+                    $welcome .= "🔍 <b>How to Search:</b> Just type movie name\n";
                     $welcome .= "🛡️ <b>Protection:</b> Files auto-delete in " . DELETE_AFTER_MINUTES . " min\n";
-                    $welcome .= "📊 <b>Analytics:</b> Use /1stupload, /recent, etc.\n\n";
+                    $welcome .= "📊 <b>Analytics:</b> /recent, /1stupload, /totalupload\n\n";
                     
                     $welcome .= "📢 <b>Channels:</b>\n";
                     $welcome .= "• Main: " . MAIN_CHANNEL . "\n";
                     $welcome .= "• Requests: " . REQUEST_CHANNEL . "\n";
                     $welcome .= "• Backup: " . BACKUP_CHANNEL . "\n\n";
                     
-                    $welcome .= "🚀 <b>Enjoy the complete experience!</b>";
+                    $welcome .= "🚀 <b>Enjoy Unlimited Entertainment!</b>";
                     
                     $keyboard = [
                         'inline_keyboard' => [
                             [
                                 ['text' => '🔍 Search Movies', 'switch_inline_query_current_chat' => ''],
-                                ['text' => '📊 Analytics', 'callback_data' => 'show_analytics']
+                                ['text' => '📊 Analytics', 'callback_data' => 'analytics_menu']
                             ],
                             [
                                 ['text' => '🛡️ Protection Info', 'callback_data' => 'protection_info'],
@@ -1650,193 +1159,401 @@ if ($update) {
                         ]
                     ];
                     
-                    sendMessage($chat_id, $welcome, $keyboard, 'HTML');
+                    send_message($chat_id, $welcome, $keyboard);
                     break;
                     
                 case '/help':
-                    $help = "🤖 <b>Entertainment Tadka Mega Bot - Complete Help</b>\n\n";
+                    $help = "🤖 <b>COMPLETE HELP GUIDE</b>\n\n";
                     
                     $help .= "🎯 <b>MOVIE SEARCH:</b>\n";
-                    $help .= "• Just type movie name\n";
-                    $help .= "• Use /search movie_name\n";
+                    $help .= "• Type movie name directly\n";
+                    $help .= "• Example: 'Animal 2023'\n";
                     $help .= "• Hindi/English both work\n\n";
                     
                     $help .= "🛡️ <b>COPYRIGHT PROTECTION:</b>\n";
-                    $help .= "• Upload any file\n";
+                    $help .= "• Upload any file to bot\n";
                     $help .= "• Auto-deletes in " . DELETE_AFTER_MINUTES . " minutes\n";
                     $help .= "• Progress bar & countdown\n\n";
                     
-                    $help .= "📊 <b>UPLOAD ANALYTICS:</b>\n";
-                    $help .= "• /1stupload - First upload ever\n";
+                    $help .= "📊 <b>ANALYTICS COMMANDS:</b>\n";
                     $help .= "• /recent - Recent uploads\n";
-                    $help .= "• /lastupload - Last upload\n";
+                    $help .= "• /1stupload - First upload ever\n";
                     $help .= "• /totalupload - Total statistics\n";
-                    $help .= "• /middleupload - Middle upload\n";
-                    $help .= "• /uploaddate - Date-wise stats\n";
-                    $help .= "• /uploadcalendar - Monthly calendar\n\n";
+                    $help .= "• /today - Today's uploads\n";
+                    $help .= "• /calendar - Upload calendar\n\n";
                     
-                    $help .= "⚙️ <b>OTHER COMMANDS:</b>\n";
-                    $help .= "• /request movie - Request movie\n";
-                    $help .= "• /stats - Bot statistics\n";
+                    $help .= "⚙️ <b>ADMIN COMMANDS:</b>\n";
+                    $help .= "• /syncall - Sync CSV to analytics\n";
+                    $help .= "• /addmovie - Add new movie\n";
+                    $help .= "• /backup - Create backup\n";
+                    $help .= "• /stats - Bot statistics\n\n";
+                    
+                    $help .= "📝 <b>OTHER COMMANDS:</b>\n";
+                    $help .= "• /request - Request movie\n";
+                    $help .= "• /mystats - Your statistics\n";
                     $help .= "• /channel - Join channels\n";
-                    $help .= "• /backup - Manual backup (admin)\n\n";
+                    $help .= "• /checkdata - Check data status";
                     
-                    $help .= "🔗 <b>Channels:</b> " . MAIN_CHANNEL . " | " . REQUEST_CHANNEL;
-                    
-                    sendMessage($chat_id, $help, null, 'HTML');
+                    send_message($chat_id, $help);
                     break;
                     
-                // ================= ANALYTICS COMMANDS =================
-                case '/1stupload':
-                    sendMessage($chat_id, get_first_upload(), null, 'HTML');
+                // ============ SEARCH COMMANDS ============
+                case '/search':
+                    $query = trim(substr($text, strlen('/search')));
+                    if (empty($query)) {
+                        send_message($chat_id, "❌ Usage: /search movie_name\nExample: /search Animal 2023");
+                        break;
+                    }
+                    
+                    $results = search_movies($query, 10);
+                    update_user_stats($user_id, 'search');
+                    
+                    if (!empty($results)) {
+                        $message = "🔍 <b>Search Results for '$query'</b>\n";
+                        $message .= "📊 Found " . count($results) . " movies\n\n";
+                        
+                        foreach ($results as $index => $result) {
+                            $movie = $result['movie'];
+                            $message .= ($index + 1) . ". <b>" . htmlspecialchars($movie['name']) . "</b>\n";
+                            $message .= "   📊 " . $movie['quality'] . " | 🗣️ " . $movie['language'] . 
+                                       " | 💾 " . $movie['size'] . "\n\n";
+                        }
+                        
+                        // Create download buttons
+                        $keyboard = ['inline_keyboard' => []];
+                        $top_results = array_slice($results, 0, 3);
+                        
+                        foreach ($top_results as $index => $result) {
+                            $movie = $result['movie'];
+                            $keyboard['inline_keyboard'][] = [[
+                                'text' => "⬇️ " . ($index + 1) . ". " . shorten_text($movie['name'], 20),
+                                'callback_data' => 'download_' . base64_encode($movie['name'])
+                            ]];
+                        }
+                        
+                        $keyboard['inline_keyboard'][] = [[
+                            'text' => '📝 Request Different Movie',
+                            'callback_data' => 'request_menu'
+                        ]];
+                        
+                        send_message($chat_id, $message, $keyboard);
+                    } else {
+                        $total = count(load_movies());
+                        $message = "❌ <b>No movies found for '$query'</b>\n\n";
+                        $message .= "📁 Total movies in database: $total\n";
+                        $message .= "📝 Request this movie: /request $query\n";
+                        $message .= "🔗 Request Channel: " . REQUEST_CHANNEL;
+                        
+                        $keyboard = [
+                            'inline_keyboard' => [[
+                                ['text' => '📝 Request This Movie', 'callback_data' => 'auto_request_' . base64_encode($query)]
+                            ]]
+                        ];
+                        
+                        send_message($chat_id, $message, $keyboard);
+                    }
                     break;
                     
+                // ============ ANALYTICS COMMANDS ============
                 case '/recent':
-                case '/recentuploads':
-                    sendMessage($chat_id, get_recent_uploads(), null, 'HTML');
+                    send_message($chat_id, command_recent());
                     break;
                     
-                case '/lastupload':
-                    sendMessage($chat_id, get_last_upload(), null, 'HTML');
+                case '/1stupload':
+                    send_message($chat_id, command_first_upload());
                     break;
                     
                 case '/totalupload':
-                case '/stats':
-                    sendMessage($chat_id, get_total_uploads_stats(), null, 'HTML');
+                    send_message($chat_id, command_total_stats());
                     break;
                     
-                case '/middleupload':
-                    sendMessage($chat_id, get_middle_upload(), null, 'HTML');
+                case '/today':
+                    send_message($chat_id, command_today_stats());
                     break;
                     
-                case '/uploaddate':
+                case '/calendar':
                     $params = explode(' ', $text);
-                    $date = isset($params[1]) ? $params[1] : null;
-                    sendMessage($chat_id, get_upload_date_stats($date), null, 'HTML');
+                    $month = isset($params[1]) ? intval($params[1]) : null;
+                    $year = isset($params[2]) ? intval($params[2]) : null;
+                    send_message($chat_id, command_upload_calendar($month, $year));
                     break;
                     
-                case '/uploadcalendar':
-                    $params = explode(' ', $text);
-                    $month = isset($params[1]) ? $params[1] : null;
-                    $year = isset($params[2]) ? $params[2] : null;
-                    sendMessage($chat_id, get_upload_calendar($month, $year), null, 'HTML');
-                    break;
-                    
-                // ================= OTHER COMMANDS =================
-                case '/search':
-                    $movie_name = trim(substr($text, strlen('/search') + 1));
-                    if (!empty($movie_name)) {
-                        advanced_search($chat_id, $movie_name, $user_id);
-                    } else {
-                        sendMessage($chat_id, "❌ Usage: /search movie_name\nExample: /search Animal");
-                    }
-                    break;
-                    
-                case '/request':
-                    $movie_name = trim(substr($text, strlen('/request') + 1));
-                    if (!empty($movie_name)) {
-                        $lang = detect_language($movie_name);
+                // ============ ADMIN COMMANDS ============
+                case '/syncall':
+                    if ($user_id == ADMIN_ID) {
+                        send_message($chat_id, "🔄 Starting complete sync...");
                         
-                        // Check daily limit
-                        $users_data = json_decode(file_get_contents(USERS_FILE), true);
-                        $today = date('Y-m-d');
-                        $user_requests_today = 0;
+                        // Auto-fix CSV first
+                        $fixed = auto_fix_csv();
                         
-                        if (isset($users_data['users'][$user_id]['last_request_date']) && 
-                            $users_data['users'][$user_id]['last_request_date'] == $today) {
-                            $user_requests_today = $users_data['users'][$user_id]['request_count'] ?? 0;
+                        // Sync to analytics
+                        $synced = sync_all_analytics();
+                        
+                        // Get counts
+                        $movies = load_movies();
+                        $db = new SQLite3(ANALYTICS_DB);
+                        $analytics_count = $db->querySingle("SELECT COUNT(*) FROM uploads");
+                        $db->close();
+                        
+                        $message = "✅ <b>SYNC COMPLETED!</b>\n\n";
+                        $message .= "📊 CSV Movies: " . count($movies) . "\n";
+                        $message .= "📈 Analytics DB: $analytics_count entries\n";
+                        
+                        if ($fixed > 0) {
+                            $message .= "🔄 CSV Fixed: $fixed movies\n";
                         }
                         
-                        if ($user_requests_today < DAILY_REQUEST_LIMIT) {
-                            // Add request
-                            $requests_data = json_decode(file_get_contents(REQUEST_FILE), true);
-                            $requests_data['requests'][] = [
-                                'id' => uniqid(),
-                                'user_id' => $user_id,
-                                'movie_name' => $movie_name,
-                                'language' => $lang,
-                                'date' => $today,
-                                'time' => date('H:i:s'),
-                                'status' => 'pending'
-                            ];
-                            file_put_contents(REQUEST_FILE, json_encode($requests_data, JSON_PRETTY_PRINT));
-                            
-                            // Update user
-                            $users_data['users'][$user_id]['request_count'] = $user_requests_today + 1;
-                            $users_data['users'][$user_id]['last_request_date'] = $today;
-                            file_put_contents(USERS_FILE, json_encode($users_data, JSON_PRETTY_PRINT));
-                            
-                            update_user_activity($user_id, 'request');
-                            send_multilingual_response($chat_id, 'request_success', $lang);
-                            
-                            // Notify admin
-                            sendMessage(ADMIN_ID, "📝 New Movie Request\n\n🎬 Movie: $movie_name\n👤 User: $user_id\n🗣️ Language: $lang");
+                        if ($synced > 0) {
+                            $message .= "🔄 Newly Synced: $synced movies\n";
+                        }
+                        
+                        if (count($movies) == $analytics_count) {
+                            $message .= "\n🎉 <b>PERFECTLY SYNCED!</b>";
                         } else {
-                            send_multilingual_response($chat_id, 'request_limit', $lang);
+                            $diff = abs(count($movies) - $analytics_count);
+                            $message .= "\n⚠️ <b>Difference: $diff entries</b>";
                         }
+                        
+                        send_message($chat_id, $message);
                     } else {
-                        sendMessage($chat_id, "❌ Usage: /request movie_name\nExample: /request Animal 2");
+                        send_message($chat_id, "❌ Admin only command!");
                     }
                     break;
                     
-                case '/channel':
-                    $channel_info = "📢 <b>Our Channels</b>\n\n";
-                    $channel_info .= "🍿 <b>Main Channel:</b> " . MAIN_CHANNEL . "\n";
-                    $channel_info .= "Latest movies & updates\n\n";
-                    $channel_info .= "📥 <b>Requests Channel:</b> " . REQUEST_CHANNEL . "\n";
-                    $channel_info .= "Movie requests & support\n\n";
-                    $channel_info .= "🔒 <b>Backup Channel:</b> " . BACKUP_CHANNEL . "\n";
-                    $channel_info .= "Data backups & archives\n\n";
-                    $channel_info .= "🔔 <b>Join all for best experience!</b>";
-                    
-                    $keyboard = [
-                        'inline_keyboard' => [
-                            [
-                                ['text' => '🍿 ' . MAIN_CHANNEL, 'url' => 'https://t.me/EntertainmentTadka786'],
-                                ['text' => '📥 ' . REQUEST_CHANNEL, 'url' => 'https://t.me/EntertainmentTadka7860']
-                            ],
-                            [
-                                ['text' => '🔒 ' . BACKUP_CHANNEL, 'url' => 'https://t.me/ETBackup']
-                            ]
-                        ]
-                    ];
-                    
-                    sendMessage($chat_id, $channel_info, $keyboard, 'HTML');
+                case '/addmovie':
+                    if ($user_id == ADMIN_ID) {
+                        $parts = explode('|', substr($text, strlen('/addmovie ') + 1));
+                        if (count($parts) >= 3) {
+                            $movie_name = trim($parts[0]);
+                            $quality = trim($parts[1]);
+                            $language = trim($parts[2]);
+                            $size = isset($parts[3]) ? trim($parts[3]) : '1.5GB';
+                            
+                            add_movie($movie_name, '', $quality, $size, $language);
+                            send_message($chat_id, "✅ Movie added: $movie_name");
+                        } else {
+                            send_message($chat_id, "❌ Format: /addmovie Movie Name|Quality|Language|Size\nExample: /addmovie Animal 2023|1080p|Hindi|2.1GB");
+                        }
+                    } else {
+                        send_message($chat_id, "❌ Admin only command!");
+                    }
                     break;
                     
                 case '/backup':
                     if ($user_id == ADMIN_ID) {
-                        auto_backup();
-                        sendMessage($chat_id, "✅ Manual backup completed!");
-                    } else {
-                        sendMessage($chat_id, "❌ Admin only command!");
+                        $backup_dir = BACKUP_DIR . date('Y-m-d_H-i-s');
+                        mkdir($backup_dir, 0777, true);
+                        
+                        $files = [CSV_FILE, USERS_FILE, STATS_FILE, REQUEST_FILE, ANALYTICS_DB];
+                        foreach ($files as $file) {
+                            if (file_exists($file)) {
+                                copy($file, $backup_dir . '/' . basename($file));
+                            }
+                        }
+                        
+                        send_message($chat_id, "✅ Backup created: $backup_dir");
+                        log_message("BACKUP", "Manual backup created");
                     }
                     break;
                     
-                case '/test':
-                    if ($user_id == ADMIN_ID) {
-                        // Test all systems
-                        sendMessage($chat_id, "🧪 Testing all systems...");
-                        
-                        // Test movie search
-                        sendMessage($chat_id, "1️⃣ Testing Movie Search...");
-                        $movies = get_cached_movies();
-                        sendMessage($chat_id, "✅ Movie database: " . count($movies) . " entries");
-                        
-                        // Test analytics
-                        sendMessage($chat_id, "2️⃣ Testing Analytics...");
-                        sendMessage($chat_id, get_first_upload(), null, 'HTML');
-                        
-                        // Test protection
-                        sendMessage($chat_id, "3️⃣ Testing Protection System...");
-                        sendMessage($chat_id, "✅ All systems operational!");
+                case '/stats':
+                    $stats = json_decode(file_get_contents(STATS_FILE), true);
+                    $movies = load_movies();
+                    
+                    $message = "📊 <b>BOT STATISTICS</b>\n\n";
+                    $message .= "🎬 Total Movies: " . count($movies) . "\n";
+                    $message .= "👥 Total Users: " . ($stats['total_users'] ?? 0) . "\n";
+                    $message .= "🔍 Total Searches: " . ($stats['total_searches'] ?? 0) . "\n";
+                    $message .= "⬇️ Total Downloads: " . ($stats['total_downloads'] ?? 0) . "\n";
+                    $message .= "📤 Today's Uploads: " . ($stats['today_uploads'] ?? 0) . "\n\n";
+                    
+                    $db = new SQLite3(ANALYTICS_DB);
+                    $analytics_count = $db->querySingle("SELECT COUNT(*) FROM uploads");
+                    $pending_deletions = $db->querySingle("SELECT COUNT(*) FROM deletions WHERE status = 'pending'");
+                    $db->close();
+                    
+                    $message .= "📈 Analytics DB: $analytics_count entries\n";
+                    $message .= "🛡️ Pending Deletions: $pending_deletions\n";
+                    $message .= "📅 Last Update: " . ($stats['last_update'] ?? 'Never');
+                    
+                    send_message($chat_id, $message);
+                    break;
+                    
+                case '/checkdata':
+                    $movies = load_movies();
+                    $db = new SQLite3(ANALYTICS_DB);
+                    $analytics_count = $db->querySingle("SELECT COUNT(*) FROM uploads");
+                    $db->close();
+                    
+                    $message = "📊 <b>DATA STATUS CHECK</b>\n\n";
+                    $message .= "📁 CSV Database: " . count($movies) . " movies\n";
+                    $message .= "📈 Analytics DB: $analytics_count entries\n\n";
+                    
+                    if (count($movies) == 0) {
+                        $message .= "❌ <b>CSV FILE EMPTY!</b>\n";
+                        $message .= "Upload movies.csv file\n";
+                    } elseif ($analytics_count == 0) {
+                        $message .= "❌ <b>ANALYTICS EMPTY!</b>\n";
+                        $message .= "Use /syncall command\n";
+                    } elseif (count($movies) == $analytics_count) {
+                        $message .= "✅ <b>PERFECTLY SYNCED!</b>\n";
+                    } else {
+                        $diff = abs(count($movies) - $analytics_count);
+                        $message .= "⚠️ <b>NEEDS SYNC: $diff difference</b>\n";
+                        $message .= "Use /syncall command\n";
                     }
+                    
+                    // CSV format check
+                    if (file_exists(CSV_FILE)) {
+                        $handle = fopen(CSV_FILE, "r");
+                        $header = fgetcsv($handle);
+                        fclose($handle);
+                        
+                        $col_count = count($header);
+                        $message .= "\n📋 CSV Format: $col_count columns\n";
+                        
+                        if ($col_count == 7) {
+                            $message .= "✅ Correct 7-column format\n";
+                        } else {
+                            $message .= "❌ Wrong format (needs 7 columns)\n";
+                            $message .= "Auto-fix enabled!\n";
+                        }
+                    }
+                    
+                    send_message($chat_id, $message);
+                    break;
+                    
+                // ============ USER COMMANDS ============
+                case '/request':
+                    $movie_name = trim(substr($text, strlen('/request')));
+                    if (empty($movie_name)) {
+                        send_message($chat_id, "❌ Usage: /request movie_name\nExample: /request Animal 2 2024");
+                        break;
+                    }
+                    
+                    // Check daily limit
+                    $requests = json_decode(file_get_contents(REQUEST_FILE), true);
+                    $today = date('Y-m-d');
+                    $user_today = 0;
+                    
+                    foreach ($requests['pending'] as $req) {
+                        if ($req['user_id'] == $user_id && $req['date'] == $today) {
+                            $user_today++;
+                        }
+                    }
+                    
+                    if ($user_today >= DAILY_REQUEST_LIMIT) {
+                        send_message($chat_id, "❌ Daily limit reached! Maximum " . DAILY_REQUEST_LIMIT . " requests per day.");
+                        break;
+                    }
+                    
+                    // Add request
+                    $new_request = [
+                        'id' => uniqid(),
+                        'user_id' => $user_id,
+                        'movie_name' => $movie_name,
+                        'date' => $today,
+                        'time' => date('H:i:s'),
+                        'status' => 'pending'
+                    ];
+                    
+                    $requests['pending'][] = $new_request;
+                    file_put_contents(REQUEST_FILE, json_encode($requests, JSON_PRETTY_PRINT));
+                    
+                    update_user_stats($user_id, 'request');
+                    
+                    $message = "✅ <b>REQUEST SUBMITTED!</b>\n\n";
+                    $message .= "🎬 Movie: $movie_name\n";
+                    $message .= "👤 User: You\n";
+                    $message .= "📅 Date: $today\n";
+                    $message .= "⏰ Time: " . date('H:i:s') . "\n\n";
+                    $message .= "📊 Today's Requests: " . ($user_today + 1) . "/" . DAILY_REQUEST_LIMIT . "\n\n";
+                    $message .= "We'll add it soon! Keep checking.";
+                    
+                    send_message($chat_id, $message);
+                    
+                    // Notify admin
+                    $admin_msg = "📝 <b>NEW MOVIE REQUEST</b>\n\n";
+                    $admin_msg .= "🎬 Movie: $movie_name\n";
+                    $admin_msg .= "👤 User ID: $user_id\n";
+                    $admin_msg .= "📅 Date: $today\n";
+                    $admin_msg .= "📊 Total Pending: " . count($requests['pending']) . "\n\n";
+                    $admin_msg .= "Use /addmovie to add it.";
+                    
+                    send_message(ADMIN_ID, $admin_msg);
+                    break;
+                    
+                case '/mystats':
+                    $user_stats = get_user_stats($user_id);
+                    $movies = load_movies();
+                    
+                    $message = "👤 <b>YOUR STATISTICS</b>\n\n";
+                    $message .= "📅 Join Date: " . $user_stats['join_date'] . "\n";
+                    $message .= "⏰ Last Active: " . $user_stats['last_active'] . "\n";
+                    $message .= "🔍 Searches: " . $user_stats['search_count'] . "\n";
+                    $message .= "📝 Requests: " . $user_stats['request_count'] . "\n";
+                    $message .= "⭐ Points: " . $user_stats['points'] . "\n\n";
+                    
+                    $message .= "📊 <b>BOT STATS:</b>\n";
+                    $message .= "• Total Movies: " . count($movies) . "\n";
+                    $message .= "• Daily Request Limit: " . DAILY_REQUEST_LIMIT . "\n";
+                    $message .= "• Copyright Timer: " . DELETE_AFTER_MINUTES . " minutes\n\n";
+                    
+                    $message .= "🎯 <b>Keep searching and earning points!</b>";
+                    
+                    send_message($chat_id, $message);
+                    break;
+                    
+                case '/channel':
+                    $message = "📢 <b>OUR CHANNELS</b>\n\n";
+                    $message .= "🍿 <b>Main Channel:</b> " . MAIN_CHANNEL . "\n";
+                    $message .= "Latest movies & updates\n\n";
+                    $message .= "📥 <b>Requests Channel:</b> " . REQUEST_CHANNEL . "\n";
+                    $message .= "Movie requests & support\n\n";
+                    $message .= "🔒 <b>Backup Channel:</b> " . BACKUP_CHANNEL . "\n";
+                    $message .= "Data backups & archives\n\n";
+                    $message .= "🔔 <b>Join all for complete experience!</b>";
+                    
+                    $keyboard = [
+                        'inline_keyboard' => [
+                            [
+                                ['text' => '🍿 Main Channel', 'url' => 'https://t.me/EntertainmentTadka786'],
+                                ['text' => '📥 Requests', 'url' => 'https://t.me/EntertainmentTadka7860']
+                            ],
+                            [
+                                ['text' => '🔒 Backup', 'url' => 'https://t.me/ETBackup']
+                            ]
+                        ]
+                    ];
+                    
+                    send_message($chat_id, $message, $keyboard);
                     break;
                     
                 default:
                     // Regular text - treat as movie search
-                    if (strlen($text) > 1 && !str_starts_with($text, '/')) {
-                        advanced_search($chat_id, $text, $user_id);
+                    if (strlen($text) > 2 && !str_starts_with($text, '/')) {
+                        $results = search_movies($text, 5);
+                        update_user_stats($user_id, 'search');
+                        
+                        if (!empty($results)) {
+                            $message = "🔍 <b>Found " . count($results) . " results for '$text':</b>\n\n";
+                            
+                            foreach ($results as $index => $result) {
+                                $movie = $result['movie'];
+                                $message .= ($index + 1) . ". <b>" . htmlspecialchars($movie['name']) . "</b>\n";
+                                $message .= "   📊 " . $movie['quality'] . " | 🗣️ " . $movie['language'] . "\n\n";
+                            }
+                            
+                            send_message($chat_id, $message);
+                        } else {
+                            $total = count(load_movies());
+                            $message = "❌ <b>No movies found for '$text'</b>\n\n";
+                            $message .= "📁 Total movies: $total\n";
+                            $message .= "📝 Request it: /request $text\n";
+                            $message .= "🔗 Channel: " . MAIN_CHANNEL;
+                            
+                            send_message($chat_id, $message);
+                        }
                     }
                     break;
             }
@@ -1848,48 +1565,130 @@ if ($update) {
         $query = $update['callback_query'];
         $data = $query['data'];
         $chat_id = $query['message']['chat']['id'];
-        $message_id = $query['message']['message_id'];
         $user_id = $query['from']['id'];
+        $message_id = $query['message']['message_id'];
         
-        // Movie download callbacks
+        // Movie download callback
         if (strpos($data, 'download_') === 0) {
-            $movie_name = substr($data, 9); // Remove 'download_'
-            global $movie_messages;
-            $movie_key = strtolower($movie_name);
+            $movie_name = base64_decode(substr($data, 9));
+            $movies = load_movies();
+            $found = false;
             
-            if (isset($movie_messages[$movie_key])) {
-                $entries = $movie_messages[$movie_key];
-                $sent = 0;
-                
-                foreach ($entries as $entry) {
-                    if (!empty($entry['message_id']) && is_numeric($entry['message_id'])) {
-                        $result = forwardMessage($chat_id, CHANNEL_ID, $entry['message_id']);
-                        if ($result) $sent++;
-                        usleep(300000); // 0.3s delay
+            foreach ($movies as $movie) {
+                if (strcasecmp($movie['name'], $movie_name) === 0) {
+                    if (!empty($movie['message_id']) && is_numeric($movie['message_id'])) {
+                        $forward_result = forward_message($chat_id, CHANNEL_ID, $movie['message_id']);
+                        
+                        if ($forward_result && $forward_result['ok']) {
+                            answer_callback($query['id'], "✅ Movie forwarded!");
+                            
+                            // Update stats
+                            $stats = json_decode(file_get_contents(STATS_FILE), true);
+                            $stats['total_downloads'] = ($stats['total_downloads'] ?? 0) + 1;
+                            file_put_contents(STATS_FILE, json_encode($stats, JSON_PRETTY_PRINT));
+                            
+                            $found = true;
+                            break;
+                        }
                     }
                 }
-                
-                if ($sent > 0) {
-                    answerCallbackQuery($query['id'], "✅ $sent movies forwarded!");
-                    update_user_activity($user_id, 'download');
-                    
-                    // Update stats
-                    $stats = json_decode(file_get_contents(STATS_FILE), true);
-                    $stats['total_downloads'] = ($stats['total_downloads'] ?? 0) + $sent;
-                    file_put_contents(STATS_FILE, json_encode($stats, JSON_PRETTY_PRINT));
-                } else {
-                    answerCallbackQuery($query['id'], "❌ Could not forward movies");
-                }
-            } else {
-                answerCallbackQuery($query['id'], "❌ Movie not found");
+            }
+            
+            if (!$found) {
+                answer_callback($query['id'], "❌ Could not forward movie. Try searching again.");
             }
         }
         
-        // Copyright protection callbacks
+        // Analytics menu
+        elseif ($data == 'analytics_menu') {
+            $menu = "📊 <b>ANALYTICS MENU</b>\n\n";
+            $menu .= "Select an option:\n\n";
+            $menu .= "1️⃣ /recent - Recent uploads\n";
+            $menu .= "2️⃣ /1stupload - First upload ever\n";
+            $menu .= "3️⃣ /totalupload - Total statistics\n";
+            $menu .= "4️⃣ /today - Today's uploads\n";
+            $menu .= "5️⃣ /calendar - Monthly calendar\n";
+            $menu .= "6️⃣ /stats - Bot statistics\n\n";
+            $menu .= "📈 Complete upload tracking!";
+            
+            send_message($chat_id, $menu);
+            answer_callback($query['id']);
+        }
+        
+        // Protection info
+        elseif ($data == 'protection_info') {
+            $info = "🛡️ <b>COPYRIGHT PROTECTION SYSTEM</b>\n\n";
+            $info .= "⚠️ <b>How it works:</b>\n";
+            $info .= "1. Upload any file to bot\n";
+            $info .= "2. Bot sends warning message\n";
+            $info .= "3. File auto-deletes in " . DELETE_AFTER_MINUTES . " minutes\n";
+            $info .= "4. Forward file to save it\n\n";
+            
+            $info .= "🎯 <b>Features:</b>\n";
+            $info .= "• Progress bar countdown\n";
+            $info .= "• Live timer updates\n";
+            $info .= "• One-click actions\n";
+            $info .= "• Admin controls\n\n";
+            
+            $info .= "🔒 <b>Protect against copyright!</b>";
+            
+            send_message($chat_id, $info);
+            answer_callback($query['id']);
+        }
+        
+        // Request menu
+        elseif ($data == 'request_menu') {
+            send_message($chat_id, "📝 To request a movie:\n\nUse command:\n<code>/request movie_name</code>\n\nExample:\n<code>/request Animal 2023</code>");
+            answer_callback($query['id']);
+        }
+        
+        // Auto request
+        elseif (strpos($data, 'auto_request_') === 0) {
+            $movie_name = base64_decode(substr($data, 13));
+            
+            // Check daily limit
+            $requests = json_decode(file_get_contents(REQUEST_FILE), true);
+            $today = date('Y-m-d');
+            $user_today = 0;
+            
+            foreach ($requests['pending'] as $req) {
+                if ($req['user_id'] == $user_id && $req['date'] == $today) {
+                    $user_today++;
+                }
+            }
+            
+            if ($user_today >= DAILY_REQUEST_LIMIT) {
+                answer_callback($query['id'], "❌ Daily limit reached!", true);
+                send_message($chat_id, "❌ Daily limit reached! Maximum " . DAILY_REQUEST_LIMIT . " requests per day.");
+            } else {
+                // Add request
+                $new_request = [
+                    'id' => uniqid(),
+                    'user_id' => $user_id,
+                    'movie_name' => $movie_name,
+                    'date' => $today,
+                    'time' => date('H:i:s'),
+                    'status' => 'pending'
+                ];
+                
+                $requests['pending'][] = $new_request;
+                file_put_contents(REQUEST_FILE, json_encode($requests, JSON_PRETTY_PRINT));
+                
+                update_user_stats($user_id, 'request');
+                
+                answer_callback($query['id'], "✅ Request sent!");
+                send_message($chat_id, "✅ Request submitted for: $movie_name\n\nWe'll add it soon!");
+                
+                // Notify admin
+                send_message(ADMIN_ID, "📝 Auto-request: $movie_name\nUser: $user_id");
+            }
+        }
+        
+        // Deletion callbacks
         elseif (strpos($data, 'countdown_') === 0) {
             $schedule_id = substr($data, 10);
-            $db = new SQLite3(UPLOADS_DB);
-            $stmt = $db->prepare("SELECT delete_time FROM scheduled_deletes WHERE id = ?");
+            $db = new SQLite3(ANALYTICS_DB);
+            $stmt = $db->prepare("SELECT delete_time FROM deletions WHERE id = ?");
             $stmt->bindValue(1, $schedule_id, SQLITE3_INTEGER);
             $result = $stmt->execute();
             $row = $result->fetchArray(SQLITE3_ASSOC);
@@ -1897,447 +1696,152 @@ if ($update) {
             
             if ($row) {
                 $countdown = get_countdown_timer($row['delete_time']);
-                answerCallbackQuery($query['id'], "⏰ Countdown: $countdown", true);
+                answer_callback($query['id'], "⏰ Countdown: $countdown", true);
             }
         }
         
         elseif (strpos($data, 'saved_') === 0) {
-            answerCallbackQuery($query['id'], "✅ Great! File saved successfully.");
+            answer_callback($query['id'], "✅ Great! File saved successfully.");
         }
         
         elseif (strpos($data, 'delete_now_') === 0 && $user_id == ADMIN_ID) {
             $schedule_id = substr($data, 11);
-            $db = new SQLite3(UPLOADS_DB);
-            $stmt = $db->prepare("SELECT * FROM scheduled_deletes WHERE id = ?");
+            $db = new SQLite3(ANALYTICS_DB);
+            $stmt = $db->prepare("SELECT * FROM deletions WHERE id = ? AND status = 'pending'");
             $stmt->bindValue(1, $schedule_id, SQLITE3_INTEGER);
             $result = $stmt->execute();
             $row = $result->fetchArray(SQLITE3_ASSOC);
             
             if ($row) {
-                deleteMessage($row['chat_id'], $row['message_id']);
+                delete_message($row['chat_id'], $row['message_id']);
                 
                 // Update status
-                $update_stmt = $db->prepare("UPDATE scheduled_deletes SET status = 'deleted_manual' WHERE id = ?");
+                $update_stmt = $db->prepare("UPDATE deletions SET status = 'deleted_manual' WHERE id = ?");
                 $update_stmt->bindValue(1, $schedule_id, SQLITE3_INTEGER);
                 $update_stmt->execute();
                 
-                answerCallbackQuery($query['id'], "🗑️ File deleted immediately!", true);
+                answer_callback($query['id'], "🗑️ File deleted immediately!", true);
+                send_message($row['chat_id'], "🗑️ Admin deleted this file immediately.");
             }
             
             $db->close();
         }
-        
-        // Analytics callbacks
-        elseif ($data == 'show_analytics') {
-            $analytics_menu = "📊 <b>ANALYTICS MENU</b>\n\n";
-            $analytics_menu .= "Select an option:\n\n";
-            $analytics_menu .= "1️⃣ /1stupload - First upload ever\n";
-            $analytics_menu .= "2️⃣ /recent - Recent uploads\n";
-            $analytics_menu .= "3️⃣ /lastupload - Last upload\n";
-            $analytics_menu .= "4️⃣ /totalupload - Total statistics\n";
-            $analytics_menu .= "5️⃣ /middleupload - Middle upload\n";
-            $analytics_menu .= "6️⃣ /uploaddate - Date-wise stats\n";
-            $analytics_menu .= "7️⃣ /uploadcalendar - Monthly calendar\n\n";
-            $analytics_menu .= "📈 <b>Complete upload tracking system!</b>";
-            
-            sendMessage($chat_id, $analytics_menu);
-            answerCallbackQuery($query['id']);
-        }
-        
-        elseif ($data == 'protection_info') {
-            $protection_info = "🛡️ <b>COPYRIGHT PROTECTION SYSTEM</b>\n\n";
-            $protection_info .= "⚠️ <b>How it works:</b>\n";
-            $protection_info .= "1. Upload any file to bot\n";
-            $protection_info .= "2. Bot sends warning message\n";
-            $protection_info .= "3. File auto-deletes in " . DELETE_AFTER_MINUTES . " minutes\n";
-            $protection_info .= "4. Forward file to save it\n\n";
-            
-            $protection_info .= "🎯 <b>Features:</b>\n";
-            $protection_info .= "• Progress bar countdown\n";
-            $protection_info .= "• Live timer updates\n";
-            $protection_info .= "• One-click actions\n";
-            $protection_info .= "• Admin controls\n\n";
-            
-            $protection_info .= "🔒 <b>Protect against copyright issues!</b>";
-            
-            sendMessage($chat_id, $protection_info);
-            answerCallbackQuery($query['id']);
-        }
-        
-        // Movie request callback
-        elseif ($data == 'request_movie') {
-            sendMessage($chat_id, "📝 To request a movie:\n\nUse command:\n<code>/request movie_name</code>\n\nExample:\n<code>/request Animal 2023</code>", null, 'HTML');
-            answerCallbackQuery($query['id']);
-        }
-        
-        elseif (strpos($data, 'auto_request_') === 0) {
-            $movie_name = base64_decode(substr($data, 13));
-            $lang = detect_language($movie_name);
-            
-            // Check daily limit
-            $users_data = json_decode(file_get_contents(USERS_FILE), true);
-            $today = date('Y-m-d');
-            $user_requests_today = 0;
-            
-            if (isset($users_data['users'][$user_id]['last_request_date']) && 
-                $users_data['users'][$user_id]['last_request_date'] == $today) {
-                $user_requests_today = $users_data['users'][$user_id]['request_count'] ?? 0;
-            }
-            
-            if ($user_requests_today < DAILY_REQUEST_LIMIT) {
-                // Add request
-                $requests_data = json_decode(file_get_contents(REQUEST_FILE), true);
-                $requests_data['requests'][] = [
-                    'id' => uniqid(),
-                    'user_id' => $user_id,
-                    'movie_name' => $movie_name,
-                    'language' => $lang,
-                    'date' => $today,
-                    'time' => date('H:i:s'),
-                    'status' => 'pending'
-                ];
-                file_put_contents(REQUEST_FILE, json_encode($requests_data, JSON_PRETTY_PRINT));
-                
-                // Update user
-                $users_data['users'][$user_id]['request_count'] = $user_requests_today + 1;
-                $users_data['users'][$user_id]['last_request_date'] = $today;
-                file_put_contents(USERS_FILE, json_encode($users_data, JSON_PRETTY_PRINT));
-                
-                update_user_activity($user_id, 'request');
-                send_multilingual_response($chat_id, 'request_success', $lang);
-                answerCallbackQuery($query['id'], "✅ Request sent!");
-            } else {
-                send_multilingual_response($chat_id, 'request_limit', $lang);
-                answerCallbackQuery($query['id'], "❌ Daily limit reached!", true);
-            }
-        }
     }
 }
 
-// ================= HELPER FUNCTIONS (Cont.) =================
-function format_size($bytes) {
-    if ($bytes >= 1073741824) {
-        return number_format($bytes / 1073741824, 2) . ' GB';
-    } elseif ($bytes >= 1048576) {
-        return number_format($bytes / 1048576, 2) . ' MB';
-    } elseif ($bytes >= 1024) {
-        return number_format($bytes / 1024, 2) . ' KB';
-    } else {
-        return $bytes . ' bytes';
-    }
-}
-
-function extract_quality_from_name($text) {
-    $patterns = [
-        '/(\d{3,4}p)/i',
-        '/(HD|FHD|UHD|HQ)/i',
-        '/(WEB\-DL|WEBRip|BluRay|DVDRip)/i'
-    ];
-    
-    foreach ($patterns as $pattern) {
-        if (preg_match($pattern, $text, $matches)) {
-            return strtoupper($matches[1]);
-        }
-    }
-    
-    return 'Unknown';
-}
-
-// ================= DIRECT ACCESS PAGE =================
+// ==================== WEB INTERFACE ====================
 if (!isset($update) && php_sapi_name() != 'cli') {
+    initialize_system();
+    
+    // Auto-process deletions
+    process_deletions();
+    
+    // Get stats
+    $movies = load_movies();
+    $db = new SQLite3(ANALYTICS_DB);
+    $analytics_count = $db->querySingle("SELECT COUNT(*) FROM uploads");
+    $pending_deletions = $db->querySingle("SELECT COUNT(*) FROM deletions WHERE status = 'pending'");
+    $db->close();
+    
+    $users = json_decode(file_get_contents(USERS_FILE), true);
+    $user_count = count($users['users']);
+    
+    $stats = json_decode(file_get_contents(STATS_FILE), true);
+    
     echo "<!DOCTYPE html>
     <html>
     <head>
-        <title>🎬 Entertainment Tadka Mega Bot</title>
+        <title>🎬 Entertainment Tadka Mega Bot v5.0</title>
         <meta charset='UTF-8'>
         <meta name='viewport' content='width=device-width, initial-scale=1.0'>
         <style>
-            * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            }
-            
-            body {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-                padding: 20px;
-                color: #333;
-            }
-            
-            .container {
-                max-width: 1200px;
-                margin: 0 auto;
-            }
-            
-            .header {
-                background: rgba(255, 255, 255, 0.95);
-                padding: 40px;
-                border-radius: 20px;
-                margin-bottom: 30px;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-                text-align: center;
-            }
-            
-            .header h1 {
-                color: #667eea;
-                font-size: 3em;
-                margin-bottom: 10px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-            }
-            
-            .header p {
-                color: #666;
-                font-size: 1.2em;
-                margin-bottom: 20px;
-            }
-            
-            .stats-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-                gap: 20px;
-                margin-bottom: 30px;
-            }
-            
-            .stat-card {
-                background: white;
-                padding: 25px;
-                border-radius: 15px;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-                transition: transform 0.3s ease;
-            }
-            
-            .stat-card:hover {
-                transform: translateY(-5px);
-            }
-            
-            .stat-card h3 {
-                color: #667eea;
-                margin-bottom: 15px;
-                font-size: 1.4em;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-            }
-            
-            .stat-card .number {
-                font-size: 2.5em;
-                font-weight: bold;
-                color: #764ba2;
-                margin: 10px 0;
-            }
-            
-            .features-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-                gap: 20px;
-                margin-bottom: 30px;
-            }
-            
-            .feature-card {
-                background: white;
-                padding: 20px;
-                border-radius: 15px;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-            }
-            
-            .feature-card h4 {
-                color: #667eea;
-                margin-bottom: 10px;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-            }
-            
-            .button-group {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 15px;
-                margin-top: 30px;
-                justify-content: center;
-            }
-            
-            .button {
-                padding: 15px 30px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                text-decoration: none;
-                border-radius: 50px;
-                font-weight: bold;
-                transition: all 0.3s ease;
-                border: none;
-                cursor: pointer;
-                font-size: 1em;
-            }
-            
-            .button:hover {
-                transform: scale(1.05);
-                box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
-            }
-            
-            .button.secondary {
-                background: white;
-                color: #667eea;
-                border: 2px solid #667eea;
-            }
-            
-            .status {
-                display: inline-block;
-                padding: 5px 15px;
-                border-radius: 20px;
-                font-size: 0.9em;
-                font-weight: bold;
-            }
-            
-            .status.online {
-                background: #4CAF50;
-                color: white;
-            }
-            
-            .status.offline {
-                background: #f44336;
-                color: white;
-            }
-            
-            .log-panel {
-                background: white;
-                padding: 20px;
-                border-radius: 15px;
-                margin-top: 30px;
-                max-height: 300px;
-                overflow-y: auto;
-            }
-            
-            .log-panel h3 {
-                color: #667eea;
-                margin-bottom: 15px;
-            }
-            
-            .log-entry {
-                padding: 10px;
-                border-bottom: 1px solid #eee;
-                font-family: monospace;
-                font-size: 0.9em;
-            }
-            
-            @media (max-width: 768px) {
-                .header {
-                    padding: 20px;
-                }
-                
-                .header h1 {
-                    font-size: 2em;
-                }
-                
-                .button-group {
-                    flex-direction: column;
-                }
-                
-                .button {
-                    width: 100%;
-                    text-align: center;
-                }
-            }
+            * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+            body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+            .container { max-width: 1200px; margin: 0 auto; }
+            .header { background: white; padding: 40px; border-radius: 20px; margin-bottom: 30px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+            .header h1 { color: #667eea; font-size: 3em; margin-bottom: 10px; }
+            .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 30px; }
+            .stat-card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+            .stat-card h3 { color: #667eea; margin-bottom: 15px; font-size: 1.4em; display: flex; align-items: center; gap: 10px; }
+            .stat-number { font-size: 2.5em; font-weight: bold; color: #764ba2; margin: 10px 0; }
+            .features { background: white; padding: 25px; border-radius: 15px; margin-bottom: 30px; }
+            .features h3 { color: #667eea; margin-bottom: 20px; }
+            .feature-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
+            .feature-item { background: #f8f9fa; padding: 15px; border-radius: 10px; }
+            .buttons { display: flex; flex-wrap: wrap; gap: 15px; margin-top: 30px; justify-content: center; }
+            .btn { padding: 15px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 50px; font-weight: bold; transition: 0.3s; border: none; cursor: pointer; }
+            .btn:hover { transform: scale(1.05); box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4); }
+            .btn-secondary { background: white; color: #667eea; border: 2px solid #667eea; }
+            .logs { background: white; padding: 20px; border-radius: 15px; margin-top: 30px; max-height: 300px; overflow-y: auto; }
+            .log-entry { padding: 10px; border-bottom: 1px solid #eee; font-family: monospace; font-size: 0.9em; }
+            .status { display: inline-block; padding: 5px 15px; background: #4CAF50; color: white; border-radius: 20px; font-weight: bold; }
         </style>
     </head>
     <body>
         <div class='container'>
             <div class='header'>
-                <h1>🎬 Entertainment Tadka Mega Bot</h1>
-                <p>Complete Solution: Movie Search + Copyright Protection + Upload Analytics</p>
-                <div class='status online'>✅ SYSTEM ONLINE</div>
+                <h1>🎬 Entertainment Tadka Mega Bot v5.0</h1>
+                <p>Complete Solution: Search + Protection + Analytics</p>
+                <div class='status'>✅ ONLINE</div>
             </div>
             
             <div class='stats-grid'>
                 <div class='stat-card'>
-                    <h3>📊 Movie Database</h3>";
-    
-    $movies = get_cached_movies();
-    echo "<div class='number'>" . count($movies) . "</div>";
-    echo "<p>Total movies in database</p>";
-    
-    echo "</div>
-                <div class='stat-card'>
-                    <h3>🛡️ Protection System</h3>
-                    <div class='number'>" . DELETE_AFTER_MINUTES . " min</div>
-                    <p>Auto-delete timer</p>
-                </div>
-                <div class='stat-card'>
-                    <h3>📈 Upload Analytics</h3>";
-    
-    $db = new SQLite3(UPLOADS_DB);
-    $upload_count = $db->querySingle("SELECT COUNT(*) FROM uploads");
-    $db->close();
-    
-    echo "<div class='number'>$upload_count</div>";
-    echo "<p>Tracked uploads</p>";
-    
-    echo "</div>
-                <div class='stat-card'>
-                    <h3>👥 Users</h3>";
-    
-    $users_data = json_decode(file_get_contents(USERS_FILE), true);
-    $user_count = count($users_data['users'] ?? []);
-    
-    echo "<div class='number'>$user_count</div>";
-    echo "<p>Active users</p>";
-    
-    echo "</div>
-            </div>
-            
-            <div class='features-grid'>
-                <div class='feature-card'>
-                    <h4>🔍 Smart Movie Search</h4>
-                    <ul>
-                        <li>Fuzzy matching</li>
-                        <li>Multi-language</li>
-                        <li>Quality filters</li>
-                        <li>Auto-suggestions</li>
-                    </ul>
+                    <h3>📊 Movie Database</h3>
+                    <div class='stat-number'>" . count($movies) . "</div>
+                    <p>Total movies in CSV</p>
                 </div>
                 
-                <div class='feature-card'>
-                    <h4>🛡️ Copyright Protection</h4>
-                    <ul>
-                        <li>Auto-delete in " . DELETE_AFTER_MINUTES . " min</li>
-                        <li>Progress bar countdown</li>
-                        <li>Warning messages</li>
-                        <li>Admin controls</li>
-                    </ul>
+                <div class='stat-card'>
+                    <h3>📈 Analytics DB</h3>
+                    <div class='stat-number'>$analytics_count</div>
+                    <p>Tracked uploads</p>
                 </div>
                 
-                <div class='feature-card'>
-                    <h4>📊 Upload Analytics</h4>
-                    <ul>
-                        <li>First/last upload tracking</li>
-                        <li>Monthly calendar</li>
-                        <li>Statistics & trends</li>
-                        <li>Milestone tracking</li>
-                    </ul>
+                <div class='stat-card'>
+                    <h3>👥 Users</h3>
+                    <div class='stat-number'>$user_count</div>
+                    <p>Active users</p>
                 </div>
                 
-                <div class='feature-card'>
-                    <h4>⚡ Other Features</h4>
-                    <ul>
-                        <li>Auto-backup system</li>
-                        <li>User points system</li>
-                        <li>Movie requests</li>
-                        <li>Channel integration</li>
-                    </ul>
+                <div class='stat-card'>
+                    <h3>🛡️ Protection</h3>
+                    <div class='stat-number'>$pending_deletions</div>
+                    <p>Pending deletions</p>
                 </div>
             </div>
             
-            <div class='button-group'>
-                <a href='?setwebhook=1' class='button'>🚀 Set Webhook</a>
-                <a href='?test=1' class='button secondary'>🧪 Test Systems</a>
-                <a href='?backup=1' class='button'>💾 Manual Backup</a>
-                <a href='?logs=1' class='button secondary'>📋 View Logs</a>
+            <div class='features'>
+                <h3>🚀 Complete Features</h3>
+                <div class='feature-list'>
+                    <div class='feature-item'>
+                        <h4>🔍 Smart Search</h4>
+                        <p>Fuzzy matching, multi-language, quality filters</p>
+                    </div>
+                    <div class='feature-item'>
+                        <h4>🛡️ Copyright Protection</h4>
+                        <p>Auto-delete in " . DELETE_AFTER_MINUTES . " minutes with countdown</p>
+                    </div>
+                    <div class='feature-item'>
+                        <h4>📊 Analytics</h4>
+                        <p>Upload tracking, statistics, calendar view</p>
+                    </div>
+                    <div class='feature-item'>
+                        <h4>⚡ Auto Systems</h4>
+                        <p>CSV auto-fix, analytics sync, auto-backup</p>
+                    </div>
+                </div>
             </div>
             
-            <div class='log-panel'>
+            <div class='buttons'>
+                <a href='?sync=1' class='btn'>🔄 Force Sync</a>
+                <a href='?fixcsv=1' class='btn'>🔧 Fix CSV Format</a>
+                <a href='?backup=1' class='btn'>💾 Create Backup</a>
+                <a href='?test=1' class='btn btn-secondary'>🧪 Test Systems</a>
+                <a href='?logs=1' class='btn btn-secondary'>📋 View Logs</a>
+            </div>
+            
+            <div class='logs'>
                 <h3>📝 Recent Activity</h3>";
     
     if (file_exists(LOG_FILE)) {
@@ -2346,92 +1850,64 @@ if (!isset($update) && php_sapi_name() != 'cli') {
             echo "<div class='log-entry'>" . htmlspecialchars($log) . "</div>";
         }
     } else {
-        echo "<div class='log-entry'>No logs available</div>";
+        echo "<div class='log-entry'>No logs yet</div>";
     }
     
     echo "</div>
         </div>
         
         <script>
-            // Auto-refresh logs every 30 seconds
-            setTimeout(function() {
-                window.location.reload();
-            }, 30000);
-            
-            // Handle button actions
-            document.querySelectorAll('.button').forEach(button => {
-                button.addEventListener('click', function(e) {
-                    if(this.textContent.includes('Set Webhook')) {
-                        if(!confirm('This will set the webhook URL. Continue?')) {
-                            e.preventDefault();
-                        }
-                    }
-                });
-            });
+            setTimeout(() => location.reload(), 30000);
         </script>
     </body>
     </html>";
     
-    // Handle direct actions
-    if (isset($_GET['setwebhook'])) {
-        $webhook_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . 
-                      "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]";
-        $result = bot_api('setWebhook', ['url' => $webhook_url]);
-        
-        echo "<div class='container' style='margin-top: 20px;'>
-                <div class='header'>
-                    <h3>Webhook Result</h3>
-                    <pre>" . json_encode($result, JSON_PRETTY_PRINT) . "</pre>
-                    <a href='./' class='button'>← Back to Dashboard</a>
-                </div>
-              </div>";
+    // Handle web actions
+    if (isset($_GET['sync'])) {
+        $fixed = auto_fix_csv();
+        $synced = sync_all_analytics();
+        echo "<script>alert('✅ Synced! Fixed: $fixed, Synced: $synced'); location.href='./';</script>";
     }
     
-    if (isset($_GET['test'])) {
-        echo "<div class='container' style='margin-top: 20px;'>
-                <div class='header'>
-                    <h3>🧪 System Test Results</h3>";
-        
-        echo "<h4>✅ All Systems Operational</h4>";
-        echo "<p>• Movie Database: " . count($movies) . " entries</p>";
-        echo "<p>• Upload Analytics: $upload_count tracked</p>";
-        echo "<p>• Users: $user_count registered</p>";
-        echo "<p>• Files: All configuration files present</p>";
-        
-        echo "<a href='./' class='button'>← Back to Dashboard</a>
-                </div>
-              </div>";
+    if (isset($_GET['fixcsv'])) {
+        $fixed = auto_fix_csv();
+        echo "<script>alert('✅ CSV fixed: $fixed movies'); location.href='./';</script>";
     }
     
     if (isset($_GET['backup'])) {
-        auto_backup();
-        echo "<div class='container' style='margin-top: 20px;'>
-                <div class='header'>
-                    <h3>✅ Manual Backup Completed</h3>
-                    <p>All data has been backed up successfully.</p>
-                    <a href='./' class='button'>← Back to Dashboard</a>
-                </div>
-              </div>";
-    }
-    
-    if (isset($_GET['logs'])) {
-        echo "<div class='container' style='margin-top: 20px;'>
-                <div class='header'>
-                    <h3>📋 Complete Logs</h3>
-                    <div style='max-height: 500px; overflow-y: auto; background: #f5f5f5; padding: 15px; border-radius: 10px; font-family: monospace;'>";
+        $backup_dir = BACKUP_DIR . date('Y-m-d_H-i-s');
+        mkdir($backup_dir, 0777, true);
         
-        if (file_exists(LOG_FILE)) {
-            echo nl2br(htmlspecialchars(file_get_contents(LOG_FILE)));
-        } else {
-            echo "No logs found";
+        $files = [CSV_FILE, USERS_FILE, STATS_FILE, REQUEST_FILE, ANALYTICS_DB];
+        foreach ($files as $file) {
+            if (file_exists($file)) {
+                copy($file, $backup_dir . '/' . basename($file));
+            }
         }
         
-        echo "</div>
-                    <a href='./' class='button'>← Back to Dashboard</a>
-                </div>
-              </div>";
+        echo "<script>alert('✅ Backup created: $backup_dir'); location.href='./';</script>";
     }
 }
 
-// ================= END OF MEGA BOT =================
+// ==================== HELPER FUNCTIONS ====================
+function format_size($bytes) {
+    if ($bytes >= 1073741824) {
+        return number_format($bytes / 1073741824, 2) . ' GB';
+    } elseif ($bytes >= 1048576) {
+        return number_format($bytes / 1048576, 2) . ' MB';
+    } elseif ($bytes >= 1024) {
+        return number_format($bytes / 1024, 2) . ' KB';
+    } elseif ($bytes > 0) {
+        return $bytes . ' bytes';
+    } else {
+        return '';
+    }
+}
+
+function shorten_text($text, $length = 30) {
+    if (strlen($text) <= $length) return $text;
+    return substr($text, 0, $length - 3) . '...';
+}
+
+// ==================== END OF BOT ====================
 ?>
