@@ -10,7 +10,7 @@ date_default_timezone_set('Asia/Kolkata');
 error_reporting(E_ALL);
 
 // ==================== BOT CONFIGURATION ====================
-define('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE'); // @BotFather se lo
+define('BOT_TOKEN', '8315381064:AAGk0FGVGmB8j5SjpBvW3rD3_kQHe_hyOWU'); // @BotFather se lo
 define('ADMIN_ID', '1080317415'); // Apna Telegram ID
 define('CHANNEL_ID', '-1003181705395'); // Apna channel ID
 define('MAIN_CHANNEL', '@EntertainmentTadka786');
