@@ -1,16 +1,20 @@
 <?php
-// Security headers PHP mein set karo
-header("X-Content-Type-Options: nosniff");
-header("X-Frame-Options: DENY");
-header("X-XSS-Protection: 1; mode=block");
-header("Referrer-Policy: strict-origin-when-cross-origin");
+// ==============================
+// SECURITY HEADERS & BASIC SETUP
+// ==============================
+
+// Security headers PHP mein set karo - XSS aur security attacks se bachne ke liye
+header("X-Content-Type-Options: nosniff");  // MIME type sniffing block karega
+header("X-Frame-Options: DENY");  // Clickjacking se bachayega
+header("X-XSS-Protection: 1; mode=block");  // XSS attacks block karega
+header("Referrer-Policy: strict-origin-when-cross-origin");  // Referrer info secure rakhega
 
 // ==============================
 // RENDER.COM SPECIFIC CONFIGURATION
 // ==============================
 
 // Render.com provides PORT environment variable
-$port = getenv('PORT') ?: '80';
+$port = getenv('PORT') ?: '80';  // Port detect karta hai, default 80
 
 // Webhook URL automatically set karo
 $webhook_url = getenv('RENDER_EXTERNAL_URL') ?: 'https://your-bot-name.onrender.com';
@@ -23,81 +27,89 @@ if (!getenv('BOT_TOKEN')) {
 // ==============================
 // ENVIRONMENT VARIABLES CONFIGURATION
 // ==============================
-define('BOT_TOKEN', getenv('BOT_TOKEN'));
-define('CHANNEL_ID', getenv('CHANNEL_ID', '-1003181705395'));
-define('BACKUP_CHANNEL_ID', getenv('BACKUP_CHANNEL_ID', '-1002964109368'));
-define('BACKUP_CHANNEL_USERNAME', getenv('BACKUP_CHANNEL_USERNAME', '@ETBackup'));
-define('ADMIN_ID', (int)getenv('ADMIN_ID', '1080317415'));
-define('REQUEST_CHANNEL', getenv('REQUEST_CHANNEL', '@EntertainmentTadka7860'));
-define('MAIN_CHANNEL', getenv('MAIN_CHANNEL', '@EntertainmentTadka786'));
+// Yeh sab variables Render.com ke dashboard mein set karne hain
+define('BOT_TOKEN', getenv('BOT_TOKEN'));  // Telegram bot token
+define('CHANNEL_ID', getenv('CHANNEL_ID', '-1003181705395'));  // Main movies channel
+define('BACKUP_CHANNEL_ID', getenv('BACKUP_CHANNEL_ID', '-1002964109368'));  // Backup channel
+define('BACKUP_CHANNEL_USERNAME', getenv('BACKUP_CHANNEL_USERNAME', '@ETBackup'));  // Backup channel username
+define('ADMIN_ID', (int)getenv('ADMIN_ID', '1080317415'));  // Admin user ID
+define('REQUEST_CHANNEL', getenv('REQUEST_CHANNEL', '@EntertainmentTadka7860'));  // Request channel
+define('MAIN_CHANNEL', getenv('MAIN_CHANNEL', '@EntertainmentTadka786'));  // Main channel
 
-// File paths
-define('CSV_FILE', 'movies.csv');
-define('USERS_FILE', 'users.json');
-define('STATS_FILE', 'bot_stats.json');
-define('REQUEST_FILE', 'movie_requests.json');
-define('BACKUP_DIR', 'backups/');
-define('LOG_FILE', 'bot_activity.log');
+// File paths - Yeh sab files bot ke saath create hongi
+define('CSV_FILE', 'movies.csv');  // Movies database
+define('USERS_FILE', 'users.json');  // Users data
+define('STATS_FILE', 'bot_stats.json');  // Bot statistics
+define('REQUEST_FILE', 'movie_requests.json');  // Movie requests
+define('BACKUP_DIR', 'backups/');  // Backup folder
+define('LOG_FILE', 'bot_activity.log');  // Activity log
 
-// Constants
-define('CACHE_EXPIRY', 300);
-define('ITEMS_PER_PAGE', 5);
-define('MAX_SEARCH_RESULTS', 15);
-define('DAILY_REQUEST_LIMIT', 5);
-define('AUTO_BACKUP_HOUR', '03');
-
-// Security - Check for environment variables first
-if (getenv('BOT_TOKEN')) {
-    define('BOT_TOKEN', getenv('BOT_TOKEN'));
-}
+// Constants - Bot ke settings
+define('CACHE_EXPIRY', 300);  // 5 minutes cache
+define('ITEMS_PER_PAGE', 5);  // Pagination ke liye items per page
+define('MAX_SEARCH_RESULTS', 15);  // Maximum search results
+define('DAILY_REQUEST_LIMIT', 5);  // Daily movie request limit per user
+define('AUTO_BACKUP_HOUR', '03');  // Auto backup time (3 AM)
 
 // ==============================
 // MAINTENANCE MODE
 // ==============================
-$MAINTENANCE_MODE = false;
+$MAINTENANCE_MODE = false;  // Agar true hai toh bot maintenance mode mein hoga
 $MAINTENANCE_MESSAGE = "🛠️ <b>Bot Under Maintenance</b>\n\nWe're temporarily unavailable for updates.\nWill be back in few days!\n\nThanks for patience 🙏";
 
 // ==============================
-// FILE INITIALIZATION
+// GLOBAL VARIABLES
+// ==============================
+$movie_messages = array();  // Movies cache
+$movie_cache = array();  // Movies data cache
+$waiting_users = array();  // Users waiting for movies
+$user_sessions = array();  // User sessions
+
+// ==============================
+// FILE INITIALIZATION FUNCTION
 // ==============================
 function initialize_files() {
+    // Sab required files create karta hai agar nahi hain toh
     $files = [
-        CSV_FILE => "movie_name,message_id,date,video_path,quality,size,language\n",
+        CSV_FILE => "movie_name,message_id,date,video_path,quality,size,language\n",  // CSV header
         USERS_FILE => json_encode([
-            'users' => [], 
-            'total_requests' => 0, 
-            'message_logs' => [],
-            'daily_stats' => []
+            'users' => [],  // Users ka data
+            'total_requests' => 0,  // Total requests count
+            'message_logs' => [],  // Message logs
+            'daily_stats' => []  // Daily statistics
         ], JSON_PRETTY_PRINT),
         STATS_FILE => json_encode([
-            'total_movies' => 0, 
-            'total_users' => 0, 
-            'total_searches' => 0,
-            'total_downloads' => 0,
-            'successful_searches' => 0,
-            'failed_searches' => 0,
-            'daily_activity' => [],
-            'last_updated' => date('Y-m-d H:i:s')
+            'total_movies' => 0,  // Total movies count
+            'total_users' => 0,  // Total users count
+            'total_searches' => 0,  // Total searches
+            'total_downloads' => 0,  // Total downloads
+            'successful_searches' => 0,  // Successful searches
+            'failed_searches' => 0,  // Failed searches
+            'daily_activity' => [],  // Daily activity data
+            'last_updated' => date('Y-m-d H:i:s')  // Last updated timestamp
         ], JSON_PRETTY_PRINT),
         REQUEST_FILE => json_encode([
-            'requests' => [],
-            'pending_approval' => [],
-            'completed_requests' => [],
-            'user_request_count' => []
+            'requests' => [],  // Movie requests
+            'pending_approval' => [],  // Pending requests
+            'completed_requests' => [],  // Completed requests
+            'user_request_count' => []  // User request counts
         ], JSON_PRETTY_PRINT)
     ];
     
+    // Har file ko check karo aur create karo agar nahi hai
     foreach ($files as $file => $content) {
         if (!file_exists($file)) {
             file_put_contents($file, $content);
-            @chmod($file, 0666);
+            @chmod($file, 0666);  // Read/write permissions
         }
     }
     
+    // Backup directory create karo
     if (!file_exists(BACKUP_DIR)) {
-        @mkdir(BACKUP_DIR, 0777, true);
+        @mkdir(BACKUP_DIR, 0777, true);  // Full permissions
     }
     
+    // Log file create karo
     if (!file_exists(LOG_FILE)) {
         file_put_contents(LOG_FILE, "[" . date('Y-m-d H:i:s') . "] SYSTEM: Files initialized\n");
     }
@@ -110,6 +122,7 @@ initialize_files();
 // LOGGING SYSTEM
 // ==============================
 function bot_log($message, $type = 'INFO') {
+    // Bot activities ko log karta hai
     $timestamp = date('Y-m-d H:i:s');
     $log_entry = "[$timestamp] $type: $message\n";
     file_put_contents(LOG_FILE, $log_entry, FILE_APPEND);
@@ -118,30 +131,31 @@ function bot_log($message, $type = 'INFO') {
 // ==============================
 // CACHING SYSTEM
 // ==============================
-$movie_messages = array();
-$movie_cache = array();
-$waiting_users = array();
-$user_sessions = array();
-
 function get_cached_movies() {
     global $movie_cache;
+    
+    // Cache check karo - 5 minutes se zyada purana toh refresh karo
     if (!empty($movie_cache) && (time() - $movie_cache['timestamp']) < CACHE_EXPIRY) {
-        return $movie_cache['data'];
+        return $movie_cache['data'];  // Cache hit
     }
+    
+    // Cache miss - reload data from CSV
     $movie_cache = [
         'data' => load_and_clean_csv(),
         'timestamp' => time()
     ];
+    
     bot_log("Movie cache refreshed - " . count($movie_cache['data']) . " movies");
     return $movie_cache['data'];
 }
 
 // ==============================
-// CSV MANAGEMENT
+// CSV MANAGEMENT FUNCTIONS
 // ==============================
 function load_and_clean_csv($filename = CSV_FILE) {
     global $movie_messages;
     
+    // CSV file check karo, agar nahi hai toh create karo
     if (!file_exists($filename)) {
         file_put_contents($filename, "movie_name,message_id,date,video_path,quality,size,language\n");
         return [];
@@ -150,7 +164,9 @@ function load_and_clean_csv($filename = CSV_FILE) {
     $data = [];
     $handle = fopen($filename, "r");
     if ($handle !== FALSE) {
-        $header = fgetcsv($handle);
+        $header = fgetcsv($handle);  // Header read karo
+        
+        // Har row ko process karo
         while (($row = fgetcsv($handle)) !== FALSE) {
             if (count($row) >= 3 && (!empty(trim($row[0])))) {
                 $movie_name = trim($row[0]);
@@ -161,6 +177,7 @@ function load_and_clean_csv($filename = CSV_FILE) {
                 $size = isset($row[5]) ? trim($row[5]) : 'Unknown';
                 $language = isset($row[6]) ? trim($row[6]) : 'Hindi';
 
+                // Movie entry create karo
                 $entry = [
                     'movie_name' => $movie_name,
                     'message_id_raw' => $message_id_raw,
@@ -171,6 +188,7 @@ function load_and_clean_csv($filename = CSV_FILE) {
                     'language' => $language
                 ];
                 
+                // Message ID numeric check karo
                 if (is_numeric($message_id_raw)) {
                     $entry['message_id'] = intval($message_id_raw);
                 } else {
@@ -179,6 +197,7 @@ function load_and_clean_csv($filename = CSV_FILE) {
 
                 $data[] = $entry;
 
+                // Global movie messages array mein add karo
                 $movie = strtolower($movie_name);
                 if (!isset($movie_messages[$movie])) $movie_messages[$movie] = [];
                 $movie_messages[$movie][] = $entry;
@@ -187,13 +206,13 @@ function load_and_clean_csv($filename = CSV_FILE) {
         fclose($handle);
     }
 
-    // Update stats
+    // Statistics update karo
     $stats = json_decode(file_get_contents(STATS_FILE), true);
     $stats['total_movies'] = count($data);
     $stats['last_updated'] = date('Y-m-d H:i:s');
     file_put_contents(STATS_FILE, json_encode($stats, JSON_PRETTY_PRINT));
 
-    // Clean and rewrite CSV
+    // CSV clean karo aur rewrite karo
     $handle = fopen($filename, "w");
     fputcsv($handle, array('movie_name','message_id','date','video_path','quality','size','language'));
     foreach ($data as $row) {
@@ -217,9 +236,11 @@ function load_and_clean_csv($filename = CSV_FILE) {
 // TELEGRAM API FUNCTIONS
 // ==============================
 function apiRequest($method, $params = array(), $is_multipart = false) {
+    // Telegram API ko call karta hai
     $url = "https://api.telegram.org/bot" . BOT_TOKEN . "/" . $method;
     
     if ($is_multipart) {
+        // Files upload ke liye (multipart form data)
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_POST, true);
@@ -233,6 +254,7 @@ function apiRequest($method, $params = array(), $is_multipart = false) {
         curl_close($ch);
         return $res;
     } else {
+        // Normal API requests ke liye
         $options = array(
             'http' => array(
                 'method' => 'POST',
@@ -250,10 +272,11 @@ function apiRequest($method, $params = array(), $is_multipart = false) {
 }
 
 function sendMessage($chat_id, $text, $reply_markup = null, $parse_mode = null) {
+    // Telegram message send karta hai
     $data = [
         'chat_id' => $chat_id,
         'text' => $text,
-        'disable_web_page_preview' => true
+        'disable_web_page_preview' => true  // Link preview disable karta hai
     ];
     if ($reply_markup) $data['reply_markup'] = json_encode($reply_markup);
     if ($parse_mode) $data['parse_mode'] = $parse_mode;
@@ -264,6 +287,7 @@ function sendMessage($chat_id, $text, $reply_markup = null, $parse_mode = null) 
 }
 
 function editMessage($chat_id, $message_id, $new_text, $reply_markup = null) {
+    // Existing message edit karta hai
     $data = [
         'chat_id' => $chat_id,
         'message_id' => $message_id,
@@ -275,6 +299,7 @@ function editMessage($chat_id, $message_id, $new_text, $reply_markup = null) {
 }
 
 function deleteMessage($chat_id, $message_id) {
+    // Message delete karta hai
     apiRequest('deleteMessage', [
         'chat_id' => $chat_id,
         'message_id' => $message_id
@@ -282,6 +307,7 @@ function deleteMessage($chat_id, $message_id) {
 }
 
 function answerCallbackQuery($callback_query_id, $text = null, $show_alert = false) {
+    // Callback query reply karta hai
     $data = [
         'callback_query_id' => $callback_query_id,
         'show_alert' => $show_alert
@@ -291,6 +317,7 @@ function answerCallbackQuery($callback_query_id, $text = null, $show_alert = fal
 }
 
 function forwardMessage($chat_id, $from_chat_id, $message_id) {
+    // Message forward karta hai
     $result = apiRequest('forwardMessage', [
         'chat_id' => $chat_id,
         'from_chat_id' => $from_chat_id,
@@ -300,6 +327,7 @@ function forwardMessage($chat_id, $from_chat_id, $message_id) {
 }
 
 function copyMessage($chat_id, $from_chat_id, $message_id) {
+    // Message copy karta hai (forward nahi dikhata)
     return apiRequest('copyMessage', [
         'chat_id' => $chat_id,
         'from_chat_id' => $from_chat_id,
@@ -311,16 +339,19 @@ function copyMessage($chat_id, $from_chat_id, $message_id) {
 // MOVIE DELIVERY SYSTEM
 // ==============================
 function deliver_item_to_chat($chat_id, $item) {
+    // Movie user ko deliver karta hai
+    
+    // Agar valid message ID hai toh forward karo
     if (!empty($item['message_id']) && is_numeric($item['message_id'])) {
-        // Try forward first (shows channel info)
+        // Pehle forward try karo (channel info dikhata hai)
         $result = json_decode(forwardMessage($chat_id, CHANNEL_ID, $item['message_id']), true);
         
         if ($result && $result['ok']) {
-            update_stats('total_downloads', 1);
+            update_stats('total_downloads', 1);  // Statistics update
             bot_log("Movie forwarded: {$item['movie_name']} to $chat_id");
             return true;
         } else {
-            // Fallback to copy
+            // Forward nahi ho paya toh copy karo
             copyMessage($chat_id, CHANNEL_ID, $item['message_id']);
             update_stats('total_downloads', 1);
             bot_log("Movie copied: {$item['movie_name']} to $chat_id");
@@ -328,7 +359,7 @@ function deliver_item_to_chat($chat_id, $item) {
         }
     }
 
-    // Send as text if no message_id
+    // Agar message ID nahi hai toh text format mein send karo
     $text = "🎬 <b>" . ($item['movie_name'] ?? 'Unknown') . "</b>\n";
     $text .= "📊 Quality: " . ($item['quality'] ?? 'Unknown') . "\n";
     $text .= "💾 Size: " . ($item['size'] ?? 'Unknown') . "\n";
@@ -344,13 +375,14 @@ function deliver_item_to_chat($chat_id, $item) {
 // STATISTICS SYSTEM
 // ==============================
 function update_stats($field, $increment = 1) {
+    // Statistics update karta hai
     if (!file_exists(STATS_FILE)) return;
     
     $stats = json_decode(file_get_contents(STATS_FILE), true);
     $stats[$field] = ($stats[$field] ?? 0) + $increment;
     $stats['last_updated'] = date('Y-m-d H:i:s');
     
-    // Update daily activity
+    // Daily activity update karo
     $today = date('Y-m-d');
     if (!isset($stats['daily_activity'][$today])) {
         $stats['daily_activity'][$today] = [
@@ -367,6 +399,7 @@ function update_stats($field, $increment = 1) {
 }
 
 function get_stats() {
+    // Statistics return karta hai
     if (!file_exists(STATS_FILE)) return [];
     return json_decode(file_get_contents(STATS_FILE), true);
 }
@@ -375,9 +408,11 @@ function get_stats() {
 // USER MANAGEMENT
 // ==============================
 function update_user_data($user_id, $user_info = []) {
+    // User data update/create karta hai
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     
     if (!isset($users_data['users'][$user_id])) {
+        // New user create karo
         $users_data['users'][$user_id] = [
             'first_name' => $user_info['first_name'] ?? '',
             'last_name' => $user_info['last_name'] ?? '',
@@ -402,6 +437,7 @@ function update_user_data($user_id, $user_info = []) {
 }
 
 function update_user_activity($user_id, $action) {
+    // User activity aur points update karta hai
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     
     if (isset($users_data['users'][$user_id])) {
@@ -424,31 +460,32 @@ function update_user_activity($user_id, $action) {
 }
 
 // ==============================
-// SEARCH SYSTEM
+// SEARCH SYSTEM - MOST IMPORTANT!
 // ==============================
 function smart_search($query) {
     global $movie_messages;
     $query_lower = strtolower(trim($query));
     $results = array();
     
+    // Har movie ke against query match karo
     foreach ($movie_messages as $movie => $entries) {
         $score = 0;
         
-        // Exact match
+        // 1. Exact match check karo
         if ($movie == $query_lower) {
             $score = 100;
         }
-        // Partial match
+        // 2. Partial match check karo
         elseif (strpos($movie, $query_lower) !== false) {
             $score = 80 - (strlen($movie) - strlen($query_lower));
         }
-        // Similarity match
+        // 3. Similarity match check karo
         else {
             similar_text($movie, $query_lower, $similarity);
             if ($similarity > 60) $score = $similarity;
         }
         
-        // Quality bonus
+        // Quality aur language ke liye bonus points
         foreach ($entries as $entry) {
             if (stripos($entry['quality'] ?? '', '1080') !== false) $score += 5;
             if (stripos($entry['quality'] ?? '', '720') !== false) $score += 3;
@@ -465,29 +502,34 @@ function smart_search($query) {
         }
     }
     
+    // Score ke hisab se sort karo (descending)
     uasort($results, function($a, $b) {
         return $b['score'] - $a['score'];
     });
     
+    // Maximum results return karo
     return array_slice($results, 0, MAX_SEARCH_RESULTS);
 }
 
 function detect_language($text) {
+    // Text ki language detect karta hai (Hindi/English)
     $hindi_keywords = ['फिल्म', 'मूवी', 'डाउनलोड', 'हिंदी', 'चाहिए', 'कहाँ', 'कैसे', 'खोज', 'तलाश'];
     $english_keywords = ['movie', 'download', 'watch', 'print', 'search', 'find', 'looking', 'want', 'need'];
     
     $hindi_score = 0;
     $english_score = 0;
     
+    // Hindi keywords check karo
     foreach ($hindi_keywords as $k) {
         if (strpos($text, $k) !== false) $hindi_score++;
     }
     
+    // English keywords check karo
     foreach ($english_keywords as $k) {
         if (stripos($text, $k) !== false) $english_score++;
     }
     
-    // Character-based detection
+    // Hindi characters detect karo
     $hindi_chars = preg_match('/[\x{0900}-\x{097F}]/u', $text);
     if ($hindi_chars) $hindi_score += 3;
     
@@ -495,6 +537,7 @@ function detect_language($text) {
 }
 
 function send_multilingual_response($chat_id, $message_type, $language) {
+    // Language ke hisab se response send karta hai
     $responses = [
         'hindi' => [
             'welcome' => "🎬 Boss, kis movie ki talash hai?",
@@ -529,7 +572,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
         return;
     }
     
-    // Enhanced invalid keywords filter
+    // Invalid keywords filter - technical queries block karega
     $invalid_keywords = [
         'vlc', 'audio', 'track', 'change', 'open', 'kar', 'me', 'hai',
         'how', 'what', 'problem', 'issue', 'help', 'solution', 'fix',
@@ -554,7 +597,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
         }
     }
     
-    // Stricter threshold
+    // Stricter threshold - agar 50% se zyada invalid words toh block karo
     if ($invalid_count > 0 && ($invalid_count / $total_words) > 0.5) {
         $help_msg = "🎬 Please enter a movie name!\n\n";
         $help_msg .= "🔍 Examples of valid movie names:\n";
@@ -573,8 +616,11 @@ function advanced_search($chat_id, $query, $user_id = null) {
         return;
     }
     
+    // Search karo
     $found = smart_search($q);
+    
     if (!empty($found)) {
+        // Movies mil gayi
         update_stats('successful_searches', 1);
         
         $msg = "🔍 Found " . count($found) . " movies for '$query':\n\n";
@@ -588,7 +634,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
         
         sendMessage($chat_id, $msg);
         
-        // Create inline keyboard with top matches
+        // Inline keyboard banayega top matches ke liye
         $keyboard = ['inline_keyboard' => []];
         $top_movies = array_slice(array_keys($found), 0, 5);
         
@@ -599,7 +645,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
             ]];
         }
         
-        // Add request button
+        // Request button add karo
         $keyboard['inline_keyboard'][] = [[
             'text' => "📝 Request Different Movie", 
             'callback_data' => 'request_movie'
@@ -613,6 +659,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
         }
         
     } else {
+        // Movies nahi mili
         update_stats('failed_searches', 1);
         $lang = detect_language($query);
         send_multilingual_response($chat_id, 'not_found', $lang);
@@ -626,6 +673,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
         
         sendMessage($chat_id, "💡 Click below to automatically request this movie:", $request_keyboard);
         
+        // Waiting list mein add karo
         if (!isset($waiting_users[$q])) $waiting_users[$q] = [];
         $waiting_users[$q][] = [$chat_id, $user_id ?? $chat_id];
     }
@@ -638,6 +686,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
 // MOVIE REQUEST SYSTEM
 // ==============================
 function can_user_request($user_id) {
+    // Check karo user daily limit mein hai ya nahi
     $requests_data = json_decode(file_get_contents(REQUEST_FILE), true);
     $today = date('Y-m-d');
     
@@ -652,6 +701,7 @@ function can_user_request($user_id) {
 }
 
 function add_movie_request($user_id, $movie_name, $language = 'hindi') {
+    // Movie request add karta hai
     if (!can_user_request($user_id)) {
         return false;
     }
@@ -669,7 +719,7 @@ function add_movie_request($user_id, $movie_name, $language = 'hindi') {
         'status' => 'pending'
     ];
     
-    // Update user request count
+    // User request count update karo
     if (!isset($requests_data['user_request_count'][$user_id])) {
         $requests_data['user_request_count'][$user_id] = 0;
     }
@@ -677,7 +727,7 @@ function add_movie_request($user_id, $movie_name, $language = 'hindi') {
     
     file_put_contents(REQUEST_FILE, json_encode($requests_data, JSON_PRETTY_PRINT));
     
-    // Notify admin
+    // Admin ko notify karo
     $admin_msg = "🎯 New Movie Request\n\n";
     $admin_msg .= "🎬 Movie: $movie_name\n";
     $admin_msg .= "🗣️ Language: $language\n";
@@ -695,10 +745,12 @@ function add_movie_request($user_id, $movie_name, $language = 'hindi') {
 // PAGINATION SYSTEM
 // ==============================
 function get_all_movies_list() {
+    // All movies list return karta hai
     return get_cached_movies();
 }
 
 function paginate_movies(array $all, int $page): array {
+    // Movies ko paginate karta hai
     $total = count($all);
     if ($total === 0) {
         return [
@@ -722,6 +774,7 @@ function paginate_movies(array $all, int $page): array {
 }
 
 function build_totalupload_keyboard(int $page, int $total_pages): array {
+    // Pagination keyboard banata hai
     $kb = ['inline_keyboard' => []];
     
     // Navigation buttons
@@ -766,6 +819,7 @@ function build_totalupload_keyboard(int $page, int $total_pages): array {
 }
 
 function totalupload_controller($chat_id, $page = 1) {
+    // Total uploads pagination controller
     $all = get_all_movies_list();
     if (empty($all)) {
         sendMessage($chat_id, "📭 Koi movies nahi mili! Pehle kuch movies add karo.");
@@ -774,10 +828,10 @@ function totalupload_controller($chat_id, $page = 1) {
     
     $pg = paginate_movies($all, (int)$page);
     
-    // Forward current page movies
+    // Current page movies forward karo
     forward_page_movies($chat_id, $pg['slice']);
     
-    // Build detailed message
+    // Detailed message banayega
     $title = "🎬 <b>Total Uploads</b>\n\n";
     $title .= "📊 <b>Statistics:</b>\n";
     $title .= "• Total Movies: <b>{$pg['total']}</b>\n";
@@ -802,6 +856,7 @@ function totalupload_controller($chat_id, $page = 1) {
 }
 
 function forward_page_movies($chat_id, array $page_movies) {
+    // Page movies forward karta hai
     $total = count($page_movies);
     if ($total === 0) return;
     
@@ -815,12 +870,12 @@ function forward_page_movies($chat_id, array $page_movies) {
         $success = deliver_item_to_chat($chat_id, $m);
         if ($success) $success_count++;
         
-        // Update progress every 2 movies
+        // Har 2 movies ke baad progress update karo
         if ($i % 2 === 0) {
             editMessage($chat_id, $progress_msg_id, "⏳ Forwarding... ({$i}/{$total})");
         }
         
-        usleep(500000); // 0.5 second delay
+        usleep(500000); // 0.5 second delay - rate limiting ke liye
         $i++;
     }
     
@@ -829,9 +884,10 @@ function forward_page_movies($chat_id, array $page_movies) {
 }
 
 // ==============================
-// BACKUP SYSTEM
+// BACKUP SYSTEM - COMPLETE IMPLEMENTATION
 // ==============================
 function auto_backup() {
+    // Automatic backup process
     bot_log("Starting auto-backup process...");
     
     $backup_files = [CSV_FILE, USERS_FILE, STATS_FILE, REQUEST_FILE, LOG_FILE];
@@ -881,6 +937,7 @@ function auto_backup() {
 }
 
 function create_backup_summary() {
+    // Backup summary create karta hai
     $stats = get_stats();
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     $requests_data = json_decode(file_get_contents(REQUEST_FILE), true);
@@ -913,8 +970,9 @@ function create_backup_summary() {
 }
 
 function upload_backup_to_channel($backup_dir, $summary) {
+    // Backup Telegram channel pe upload karta hai
     try {
-        // 1. Send backup summary as message with channel link
+        // 1. Backup summary message send karo
         $summary_message = "🔄 <b>Daily Auto-Backup Report</b>\n\n";
         $summary_message .= "📅 " . date('Y-m-d H:i:s') . "\n\n";
         
@@ -949,7 +1007,7 @@ function upload_backup_to_channel($backup_dir, $summary) {
             return false;
         }
         
-        // 2. Upload critical files as documents
+        // 2. Critical files as documents upload karo
         $critical_files = [
             CSV_FILE => "🎬 Movies Database",
             USERS_FILE => "👥 Users Data", 
@@ -967,10 +1025,10 @@ function upload_backup_to_channel($backup_dir, $summary) {
             }
         }
         
-        // 3. Create and upload zip archive
+        // 3. Zip archive create karo aur upload karo
         $zip_success = create_and_upload_zip($backup_dir);
         
-        // 4. Send completion message
+        // 4. Completion message send karo
         $completion_message = "✅ <b>Backup Process Completed</b>\n\n";
         $completion_message .= "📅 " . date('Y-m-d H:i:s') . "\n";
         $completion_message .= "💾 All files backed up successfully\n";
@@ -985,7 +1043,7 @@ function upload_backup_to_channel($backup_dir, $summary) {
     } catch (Exception $e) {
         bot_log("Channel backup failed: " . $e->getMessage(), 'ERROR');
         
-        // Send error report to backup channel
+        // Error report send karo backup channel pe
         $error_message = "❌ <b>Backup Process Failed</b>\n\n";
         $error_message .= "📅 " . date('Y-m-d H:i:s') . "\n";
         $error_message .= "🚨 Error: " . $e->getMessage() . "\n\n";
@@ -998,6 +1056,7 @@ function upload_backup_to_channel($backup_dir, $summary) {
 }
 
 function upload_file_to_channel($file_path, $backup_dir, $description = "") {
+    // Individual file channel pe upload karta hai
     if (!file_exists($file_path)) {
         return false;
     }
@@ -1019,11 +1078,11 @@ function upload_file_to_channel($file_path, $backup_dir, $description = "") {
     $caption .= "🔄 Auto-backup\n";
     $caption .= "📡 " . BACKUP_CHANNEL_USERNAME;
     
-    // For large files, we might need to use curl directly
-    if ($file_size > 45 * 1024 * 1024) { // 45MB limit (Telegram's limit is 50MB)
+    // Large files ke liye (Telegram limit 50MB)
+    if ($file_size > 45 * 1024 * 1024) { // 45MB limit
         bot_log("File too large for Telegram: $file_name ($file_size_mb MB)", 'WARNING');
         
-        // Split large CSV files
+        // Large CSV files ko split karo
         if ($file_name == 'movies.csv') {
             return split_and_upload_large_csv($backup_file_path, $backup_dir, $description);
         }
@@ -1054,7 +1113,7 @@ function upload_file_to_channel($file_path, $backup_dir, $description = "") {
     if ($success) {
         bot_log("Uploaded to channel: $file_name");
         
-        // Send confirmation message for large files
+        // Large files ke liye confirmation message
         if ($file_size > 10 * 1024 * 1024) {
             $confirmation = "✅ <b>Large File Uploaded</b>\n\n";
             $confirmation .= "📁 File: " . $description . "\n";
@@ -1070,6 +1129,7 @@ function upload_file_to_channel($file_path, $backup_dir, $description = "") {
 }
 
 function split_and_upload_large_csv($csv_file_path, $backup_dir, $description) {
+    // Large CSV files ko split karke upload karta hai
     if (!file_exists($csv_file_path)) {
         return false;
     }
@@ -1079,11 +1139,11 @@ function split_and_upload_large_csv($csv_file_path, $backup_dir, $description) {
     
     bot_log("Splitting large CSV file: $file_size_mb MB", 'INFO');
     
-    // Read the CSV file
+    // CSV file read karo
     $rows = [];
     $handle = fopen($csv_file_path, 'r');
     if ($handle !== FALSE) {
-        $header = fgetcsv($handle); // Read header
+        $header = fgetcsv($handle); // Header read karo
         while (($row = fgetcsv($handle)) !== FALSE) {
             $rows[] = $row;
         }
@@ -1091,7 +1151,7 @@ function split_and_upload_large_csv($csv_file_path, $backup_dir, $description) {
     }
     
     $total_rows = count($rows);
-    $rows_per_file = ceil($total_rows / 3); // Split into 3 parts
+    $rows_per_file = ceil($total_rows / 3); // 3 parts mein split karo
     
     $upload_success = true;
     
@@ -1100,7 +1160,7 @@ function split_and_upload_large_csv($csv_file_path, $backup_dir, $description) {
         $end = min($start + $rows_per_file, $total_rows);
         $part_rows = array_slice($rows, $start, $end - $start);
         
-        // Create part file
+        // Part file create karo
         $part_file = $backup_dir . '/movies_part_' . ($i + 1) . '.csv';
         $part_handle = fopen($part_file, 'w');
         fputcsv($part_handle, $header);
@@ -1109,7 +1169,7 @@ function split_and_upload_large_csv($csv_file_path, $backup_dir, $description) {
         }
         fclose($part_handle);
         
-        // Upload part file
+        // Part file upload karo
         $part_caption = "💾 " . $description . " (Part " . ($i + 1) . "/3)\n";
         $part_caption .= "📅 " . date('Y-m-d H:i:s') . "\n";
         $part_caption .= "📊 Rows: " . count($part_rows) . "\n";
@@ -1134,7 +1194,7 @@ function split_and_upload_large_csv($csv_file_path, $backup_dir, $description) {
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
         
-        // Clean up part file
+        // Part file clean up karo
         @unlink($part_file);
         
         if ($http_code != 200) {
@@ -1147,7 +1207,7 @@ function split_and_upload_large_csv($csv_file_path, $backup_dir, $description) {
         sleep(2); // Rate limiting
     }
     
-    // Send split completion message
+    // Split completion message send karo
     if ($upload_success) {
         $split_message = "📦 <b>Large CSV Split Successfully</b>\n\n";
         $split_message .= "📁 File: " . $description . "\n";
@@ -1163,7 +1223,7 @@ function split_and_upload_large_csv($csv_file_path, $backup_dir, $description) {
 }
 
 function create_and_upload_zip($backup_dir) {
-    // Create zip file
+    // Zip archive create aur upload karta hai
     $zip_file = $backup_dir . '/complete_backup.zip';
     $zip = new ZipArchive();
     
@@ -1172,13 +1232,13 @@ function create_and_upload_zip($backup_dir) {
         return false;
     }
     
-    // Add files to zip
+    // Files zip mein add karo
     $files = glob($backup_dir . '/*.bak');
     foreach ($files as $file) {
         $zip->addFile($file, basename($file));
     }
     
-    // Add summary file
+    // Summary file add karo
     if (file_exists($backup_dir . '/backup_summary.txt')) {
         $zip->addFile($backup_dir . '/backup_summary.txt', 'backup_summary.txt');
     }
@@ -1188,7 +1248,7 @@ function create_and_upload_zip($backup_dir) {
     $zip_size = filesize($zip_file);
     $zip_size_mb = round($zip_size / (1024 * 1024), 2);
     
-    // Upload zip file
+    // Zip file upload karo
     $caption = "📦 Complete Backup Archive\n";
     $caption .= "📅 " . date('Y-m-d H:i:s') . "\n";
     $caption .= "💾 Size: " . $zip_size_mb . " MB\n";
@@ -1222,7 +1282,7 @@ function create_and_upload_zip($backup_dir) {
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
     
-    // Clean up zip file
+    // Zip file clean up karo
     @unlink($zip_file);
     
     $success = ($http_code == 200);
@@ -1230,7 +1290,7 @@ function create_and_upload_zip($backup_dir) {
     if ($success) {
         bot_log("Zip backup uploaded to channel successfully");
         
-        // Send zip upload confirmation
+        // Zip upload confirmation send karo
         $zip_confirmation = "✅ <b>Zip Archive Uploaded</b>\n\n";
         $zip_confirmation .= "📦 File: Complete Backup Archive\n";
         $zip_confirmation .= "💾 Size: " . $zip_size_mb . " MB\n";
@@ -1247,6 +1307,7 @@ function create_and_upload_zip($backup_dir) {
 }
 
 function clean_old_backups() {
+    // Purane backups delete karta hai (last 7 rakhta hai)
     $old = glob(BACKUP_DIR . '*', GLOB_ONLYDIR);
     if (count($old) > 7) {
         usort($old, function($a, $b) {
@@ -1268,6 +1329,7 @@ function clean_old_backups() {
 }
 
 function send_backup_report($success, $summary) {
+    // Admin ko backup report send karta hai
     $report_message = "🔄 <b>Backup Completion Report</b>\n\n";
     
     if ($success) {
@@ -1281,7 +1343,7 @@ function send_backup_report($success, $summary) {
         $report_message .= "⚠️ Some backup operations may have failed. Check logs for details.\n\n";
     }
     
-    // Add summary stats
+    // Summary stats add karo
     $stats = get_stats();
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     
@@ -1313,6 +1375,7 @@ function send_backup_report($success, $summary) {
 // MANUAL BACKUP COMMANDS
 // ==============================
 function manual_backup($chat_id) {
+    // Manual backup command handler
     if ($chat_id != ADMIN_ID) {
         sendMessage($chat_id, "❌ Access denied. Admin only command.");
         return;
@@ -1336,6 +1399,7 @@ function manual_backup($chat_id) {
 }
 
 function quick_backup($chat_id) {
+    // Quick backup command handler
     if ($chat_id != ADMIN_ID) {
         sendMessage($chat_id, "❌ Access denied. Admin only command.");
         return;
@@ -1358,7 +1422,7 @@ function quick_backup($chat_id) {
             }
         }
         
-        // Upload to channel
+        // Channel pe upload karo
         $summary = "🚀 Quick Backup\n" . date('Y-m-d H:i:s') . "\nEssential files only";
         file_put_contents($backup_dir . '/quick_backup_info.txt', $summary);
         
@@ -1381,6 +1445,7 @@ function quick_backup($chat_id) {
 // BACKUP STATUS & INFO COMMANDS
 // ==============================
 function backup_status($chat_id) {
+    // Backup status show karta hai
     if ($chat_id != ADMIN_ID) {
         sendMessage($chat_id, "❌ Access denied. Admin only command.");
         return;
@@ -1451,6 +1516,7 @@ function backup_status($chat_id) {
 // CHANNEL MANAGEMENT FUNCTIONS
 // ==============================
 function show_channel_info($chat_id) {
+    // All channels ka information show karta hai
     $message = "📢 <b>Join Our Channels</b>\n\n";
     
     $message .= "🍿 <b>Main Channel:</b> " . MAIN_CHANNEL . "\n";
@@ -1489,6 +1555,7 @@ function show_channel_info($chat_id) {
 }
 
 function show_main_channel_info($chat_id) {
+    // Main channel ka detailed information
     $message = "🍿 <b>Main Channel - " . MAIN_CHANNEL . "</b>\n\n";
     
     $message .= "🎬 <b>What you get:</b>\n";
@@ -1520,6 +1587,7 @@ function show_main_channel_info($chat_id) {
 }
 
 function show_request_channel_info($chat_id) {
+    // Request channel ka detailed information
     $message = "📥 <b>Requests Channel - " . REQUEST_CHANNEL . "</b>\n\n";
     
     $message .= "🎯 <b>How to request movies:</b>\n";
@@ -1555,6 +1623,7 @@ function show_request_channel_info($chat_id) {
 }
 
 function show_backup_channel_info($chat_id) {
+    // Backup channel ka detailed information
     $message = "🔒 <b>Backup Channel - " . BACKUP_CHANNEL_USERNAME . "</b>\n\n";
     
     $message .= "🛡️ <b>Purpose:</b>\n";
@@ -1597,6 +1666,7 @@ function show_backup_channel_info($chat_id) {
 // HELPER FUNCTIONS FOR CHANNEL INFO
 // ==============================
 function get_active_users_count() {
+    // Active users count karta hai (last 7 days)
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     $active_count = 0;
     $one_week_ago = strtotime('-1 week');
@@ -1611,6 +1681,7 @@ function get_active_users_count() {
 }
 
 function get_daily_uploads_count() {
+    // Daily uploads count karta hai
     $today = date('d-m-Y');
     $count = 0;
     
@@ -1629,6 +1700,7 @@ function get_daily_uploads_count() {
 }
 
 function get_csv_count() {
+    // CSV mein total movies count karta hai
     $count = 0;
     
     $handle = fopen(CSV_FILE, 'r');
@@ -1646,6 +1718,7 @@ function get_csv_count() {
 }
 
 function get_users_count() {
+    // Total users count karta hai
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     return count($users_data['users'] ?? []);
 }
@@ -1654,6 +1727,7 @@ function get_users_count() {
 // USER STATS & LEADERBOARD FUNCTIONS
 // ==============================
 function show_user_stats($chat_id, $user_id) {
+    // User ki statistics show karta hai
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     $user = $users_data['users'][$user_id] ?? null;
     
@@ -1688,6 +1762,7 @@ function show_user_stats($chat_id, $user_id) {
 }
 
 function show_user_points($chat_id, $user_id) {
+    // User ke points show karta hai
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     $user = $users_data['users'][$user_id] ?? null;
     
@@ -1715,6 +1790,7 @@ function show_user_points($chat_id, $user_id) {
 }
 
 function show_leaderboard($chat_id) {
+    // Top users leaderboard show karta hai
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     $users = $users_data['users'] ?? [];
     
@@ -1723,7 +1799,7 @@ function show_leaderboard($chat_id) {
         return;
     }
     
-    // Sort users by points
+    // Points ke hisab se sort karo
     uasort($users, function($a, $b) {
         return ($b['points'] ?? 0) - ($a['points'] ?? 0);
     });
@@ -1754,6 +1830,7 @@ function show_leaderboard($chat_id) {
 }
 
 function calculate_user_rank($points) {
+    // Points ke hisab se user rank calculate karta hai
     if ($points >= 1000) return "🎖️ Elite";
     if ($points >= 500) return "🔥 Pro";
     if ($points >= 250) return "⭐ Advanced";
@@ -1763,6 +1840,7 @@ function calculate_user_rank($points) {
 }
 
 function get_next_rank_info($points) {
+    // Next rank ke liye required points batata hai
     if ($points < 50) return "Beginner (50 points needed)";
     if ($points < 100) return "Intermediate (100 points needed)";
     if ($points < 250) return "Advanced (250 points needed)";
@@ -1775,6 +1853,7 @@ function get_next_rank_info($points) {
 // BROWSE COMMANDS
 // ==============================
 function show_latest_movies($chat_id, $limit = 10) {
+    // Latest movies show karta hai
     $all_movies = get_all_movies_list();
     $latest_movies = array_slice($all_movies, -$limit);
     $latest_movies = array_reverse($latest_movies);
@@ -1807,9 +1886,10 @@ function show_latest_movies($chat_id, $limit = 10) {
 }
 
 function show_trending_movies($chat_id) {
+    // Trending movies show karta hai
     $all_movies = get_all_movies_list();
     
-    // Simple trending logic (most recent and most downloaded)
+    // Simple trending logic (recent aur most downloaded)
     $trending_movies = array_slice($all_movies, -15); // Last 15 movies
     
     if (empty($trending_movies)) {
@@ -1832,6 +1912,7 @@ function show_trending_movies($chat_id) {
 }
 
 function show_movies_by_quality($chat_id, $quality) {
+    // Specific quality ki movies show karta hai
     $all_movies = get_all_movies_list();
     $filtered_movies = [];
     
@@ -1872,6 +1953,7 @@ function show_movies_by_quality($chat_id, $quality) {
 }
 
 function show_movies_by_language($chat_id, $language) {
+    // Specific language ki movies show karta hai
     $all_movies = get_all_movies_list();
     $filtered_movies = [];
     
@@ -1912,6 +1994,7 @@ function show_movies_by_language($chat_id, $language) {
 // REQUEST MANAGEMENT
 // ==============================
 function show_user_requests($chat_id, $user_id) {
+    // User ke movie requests show karta hai
     $requests_data = json_decode(file_get_contents(REQUEST_FILE), true);
     $user_requests = [];
     
@@ -1950,6 +2033,7 @@ function show_user_requests($chat_id, $user_id) {
 }
 
 function show_request_limit($chat_id, $user_id) {
+    // User ke request limit ka status show karta hai
     $requests_data = json_decode(file_get_contents(REQUEST_FILE), true);
     $today = date('Y-m-d');
     $today_requests = 0;
@@ -1980,6 +2064,12 @@ function show_request_limit($chat_id, $user_id) {
 // ADMIN COMMANDS
 // ==============================
 function admin_stats($chat_id) {
+    // Complete bot statistics show karta hai
+    if ($chat_id != ADMIN_ID) {
+        sendMessage($chat_id, "❌ Access denied. Admin only command.");
+        return;
+    }
+    
     $stats = get_stats();
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     $total_users = count($users_data['users'] ?? []);
@@ -2014,6 +2104,7 @@ function admin_stats($chat_id) {
 }
 
 function show_csv_data($chat_id, $show_all = false) {
+    // CSV data show karta hai
     if (!file_exists(CSV_FILE)) {
         sendMessage($chat_id, "❌ CSV file not found.");
         return;
@@ -2082,6 +2173,12 @@ function show_csv_data($chat_id, $show_all = false) {
 }
 
 function send_broadcast($chat_id, $message) {
+    // All users ko broadcast message send karta hai
+    if ($chat_id != ADMIN_ID) {
+        sendMessage($chat_id, "❌ Access denied. Admin only command.");
+        return;
+    }
+    
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     $total_users = count($users_data['users'] ?? []);
     $success_count = 0;
@@ -2095,7 +2192,7 @@ function send_broadcast($chat_id, $message) {
             sendMessage($user_id, "📢 <b>Announcement from Admin:</b>\n\n$message", null, 'HTML');
             $success_count++;
             
-            // Update progress every 10 users
+            // Har 10 users ke baad progress update karo
             if ($i % 10 === 0) {
                 $progress = round(($i / $total_users) * 100);
                 editMessage($chat_id, $progress_msg_id, "📢 Broadcasting to $total_users users...\n\nProgress: $progress%");
@@ -2104,7 +2201,7 @@ function send_broadcast($chat_id, $message) {
             usleep(100000); // 0.1 second delay
             $i++;
         } catch (Exception $e) {
-            // Skip failed sends
+            // Failed sends skip karo
         }
     }
     
@@ -2113,7 +2210,13 @@ function send_broadcast($chat_id, $message) {
 }
 
 function toggle_maintenance_mode($chat_id, $mode) {
+    // Maintenance mode toggle karta hai
     global $MAINTENANCE_MODE;
+    
+    if ($chat_id != ADMIN_ID) {
+        sendMessage($chat_id, "❌ Access denied. Admin only command.");
+        return;
+    }
     
     if ($mode == 'on') {
         $MAINTENANCE_MODE = true;
@@ -2129,9 +2232,15 @@ function toggle_maintenance_mode($chat_id, $mode) {
 }
 
 function perform_cleanup($chat_id) {
+    // System cleanup perform karta hai
+    if ($chat_id != ADMIN_ID) {
+        sendMessage($chat_id, "❌ Access denied. Admin only command.");
+        return;
+    }
+    
     $stats_before = get_stats();
     
-    // Clean up old backups
+    // Purane backups clean karo
     $old = glob(BACKUP_DIR . '*', GLOB_ONLYDIR);
     if (count($old) > 7) {
         usort($old, function($a, $b) {
@@ -2146,7 +2255,7 @@ function perform_cleanup($chat_id) {
         }
     }
     
-    // Clean cache
+    // Cache clean karo
     global $movie_cache;
     $movie_cache = [];
     
@@ -2155,6 +2264,12 @@ function perform_cleanup($chat_id) {
 }
 
 function send_alert_to_all($chat_id, $alert_message) {
+    // All users ko alert send karta hai
+    if ($chat_id != ADMIN_ID) {
+        sendMessage($chat_id, "❌ Access denied. Admin only command.");
+        return;
+    }
+    
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     $success_count = 0;
     
@@ -2164,7 +2279,7 @@ function send_alert_to_all($chat_id, $alert_message) {
             $success_count++;
             usleep(50000); // 0.05 second delay
         } catch (Exception $e) {
-            // Skip failed sends
+            // Failed sends skip karo
         }
     }
     
@@ -2176,6 +2291,7 @@ function send_alert_to_all($chat_id, $alert_message) {
 // UTILITY FUNCTIONS
 // ==============================
 function check_date($chat_id) {
+    // Movies upload dates ka record show karta hai
     if (!file_exists(CSV_FILE)) {
         sendMessage($chat_id, "⚠️ Abhi tak koi data save nahi hua.");
         return;
@@ -2216,6 +2332,7 @@ function check_date($chat_id) {
 }
 
 function test_csv($chat_id) {
+    // CSV testing ke liye raw data show karta hai
     if (!file_exists(CSV_FILE)) {
         sendMessage($chat_id, "⚠️ CSV file not found.");
         return;
@@ -2251,6 +2368,7 @@ function test_csv($chat_id) {
 }
 
 function show_bot_info($chat_id) {
+    // Bot information show karta hai
     $stats = get_stats();
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     
@@ -2281,6 +2399,7 @@ function show_bot_info($chat_id) {
 }
 
 function show_support_info($chat_id) {
+    // Support information show karta hai
     $message = "🆘 <b>Support & Contact</b>\n\n";
     
     $message .= "📞 <b>Need Help?</b>\n";
@@ -2315,6 +2434,7 @@ function show_support_info($chat_id) {
 }
 
 function show_donate_info($chat_id) {
+    // Donation information show karta hai
     $message = "💝 <b>Support Our Work</b>\n\n";
     
     $message .= "🤖 <b>Why Donate?</b>\n";
@@ -2340,6 +2460,7 @@ function show_donate_info($chat_id) {
 }
 
 function submit_bug_report($chat_id, $user_id, $bug_report) {
+    // Bug report submit karta hai
     $report_id = uniqid();
     
     $admin_message = "🐛 <b>New Bug Report</b>\n\n";
@@ -2355,6 +2476,7 @@ function submit_bug_report($chat_id, $user_id, $bug_report) {
 }
 
 function submit_feedback($chat_id, $user_id, $feedback) {
+    // User feedback submit karta hai
     $feedback_id = uniqid();
     
     $admin_message = "💡 <b>New User Feedback</b>\n\n";
@@ -2370,6 +2492,7 @@ function submit_feedback($chat_id, $user_id, $feedback) {
 }
 
 function show_version_info($chat_id) {
+    // Bot version information show karta hai
     $message = "🔄 <b>Bot Version Information</b>\n\n";
     
     $message .= "📱 <b>Current Version:</b> v2.0.0\n";
@@ -2403,14 +2526,15 @@ function show_version_info($chat_id) {
 // GROUP MESSAGE FILTER
 // ==============================
 function is_valid_movie_query($text) {
+    // Group messages filter karta hai, valid movie queries hi allow karta hai
     $text = strtolower(trim($text));
     
-    // Skip commands
+    // Commands allow karo
     if (strpos($text, '/') === 0) {
         return true;
     }
     
-    // Skip very short messages
+    // Very short messages block karo
     if (strlen($text) < 3) {
         return false;
     }
@@ -2441,7 +2565,7 @@ function is_valid_movie_query($text) {
         }
     }
     
-    // Agar koi specific movie jaisa lagta hai
+    // Agar specific movie jaisa lagta hai
     if (preg_match('/^[a-zA-Z0-9\s\-\.\,]{3,}$/', $text)) {
         return true;
     }
@@ -2453,6 +2577,7 @@ function is_valid_movie_query($text) {
 // MOVIE APPEND FUNCTION
 // ==============================
 function append_movie($movie_name, $message_id_raw, $date = null, $video_path = '', $quality = 'Unknown', $size = 'Unknown', $language = 'Hindi') {
+    // Movie database mein add karta hai
     if (empty(trim($movie_name))) return;
     
     if ($date === null) $date = date('d-m-Y');
@@ -2479,7 +2604,7 @@ function append_movie($movie_name, $message_id_raw, $date = null, $video_path = 
     $movie_messages[$movie][] = $item;
     $movie_cache = [];
 
-    // Notify waiting users
+    // Waiting users ko notify karo
     foreach ($waiting_users as $query => $users) {
         if (strpos($movie, $query) !== false) {
             foreach ($users as $user_data) {
@@ -2499,26 +2624,26 @@ function append_movie($movie_name, $message_id_raw, $date = null, $video_path = 
 // COMPLETE COMMAND HANDLER
 // ==============================
 function handle_command($chat_id, $user_id, $command, $params = []) {
+    // Sab commands handle karta hai
     switch ($command) {
         // ==================== CORE COMMANDS ====================
         case '/start':
-    $welcome = "🎬 <b>Welcome to Entertainment Tadka!</b>\\n\\n";
-    $welcome .= "📢 <b>How to use this bot:</b>\\n";
-    $welcome .= "• Simply type any movie name\\n";
-    $welcome .= "• Use English or Hindi\\n";
-    $welcome .= "• Partial names also work\\n\\n";
-    $welcome .= "🔍 <b>Examples:</b>\\n";
-    $welcome .= "• kgf\\n• pushpa\\n• avengers\\n• hindi movie\\n• spider-man\\n\\n";
-    $welcome .= "❌ <b>Don't type:</b>\\n";
-    $welcome .= "• Technical questions\\n";
-    $welcome .= "• Player instructions\\n";
-    $welcome .= "• Non-movie queries\\n\\n";
-    $welcome .= "📢 <b>Join Our Channels:</b>\\n";
-    $welcome .= "🍿 Main: @EntertainmentTadka786\\n";
-    $welcome .= "📥 Requests: " . REQUEST_CHANNEL . "\\n";
-    $welcome .= "🔒 Backup: " . BACKUP_CHANNEL_USERNAME . "\\n\\n";
-    $welcome .= "💬 <b>Need help?</b> Use /help for all commands";
-    // ... rest of the code (keyboard, etc.)
+            $welcome = "🎬 <b>Welcome to Entertainment Tadka!</b>\n\n";
+            $welcome .= "📢 <b>How to use this bot:</b>\n";
+            $welcome .= "• Simply type any movie name\n";
+            $welcome .= "• Use English or Hindi\n";
+            $welcome .= "• Partial names also work\n\n";
+            $welcome .= "🔍 <b>Examples:</b>\n";
+            $welcome .= "• kgf\n• pushpa\n• avengers\n• hindi movie\n• spider-man\n\n";
+            $welcome .= "❌ <b>Don't type:</b>\n";
+            $welcome .= "• Technical questions\n";
+            $welcome .= "• Player instructions\n";
+            $welcome .= "• Non-movie queries\n\n";
+            $welcome .= "📢 <b>Join Our Channels:</b>\n";
+            $welcome .= "🍿 Main: " . MAIN_CHANNEL . "\n";
+            $welcome .= "📥 Requests: " . REQUEST_CHANNEL . "\n";
+            $welcome .= "🔒 Backup: " . BACKUP_CHANNEL_USERNAME . "\n\n";
+            $welcome .= "💬 <b>Need help?</b> Use /help for all commands";
 
             $keyboard = [
                 'inline_keyboard' => [
@@ -2894,12 +3019,12 @@ if ($update) {
 
             if (isset($message['caption'])) {
                 $text = $message['caption'];
-                // Extract quality from caption
+                // Caption se quality extract karo
                 if (stripos($text, '1080') !== false) $quality = '1080p';
                 elseif (stripos($text, '720') !== false) $quality = '720p';
                 elseif (stripos($text, '480') !== false) $quality = '480p';
                 
-                // Extract language
+                // Language extract karo
                 if (stripos($text, 'english') !== false) $language = 'English';
                 if (stripos($text, 'hindi') !== false) $language = 'Hindi';
             }
@@ -2928,7 +3053,7 @@ if ($update) {
         $text = isset($message['text']) ? $message['text'] : '';
         $chat_type = $message['chat']['type'] ?? 'private';
 
-        // Update user data
+        // User data update karo
         $user_info = [
             'first_name' => $message['from']['first_name'] ?? '',
             'last_name' => $message['from']['last_name'] ?? '',
@@ -3115,6 +3240,7 @@ if ($update) {
 // MANUAL TESTING FUNCTIONS
 // ==============================
 if (isset($_GET['test_save'])) {
+    // Manual testing ke liye movie save function
     function manual_save_to_csv($movie_name, $message_id, $quality = '1080p', $language = 'Hindi') {
         $entry = [$movie_name, $message_id, date('d-m-Y'), '', $quality, '1.5GB', $language];
         $handle = fopen(CSV_FILE, "a");
@@ -3127,6 +3253,7 @@ if (isset($_GET['test_save'])) {
         return false;
     }
     
+    // Test movies save karo
     manual_save_to_csv("Metro In Dino (2025)", 1924, "1080p", "Hindi");
     manual_save_to_csv("Metro In Dino 2025 WebRip 480p", 1925, "480p", "Hindi");
     manual_save_to_csv("Metro In Dino (2025) Hindi 720p", 1926, "720p", "Hindi");
@@ -3141,6 +3268,7 @@ if (isset($_GET['test_save'])) {
 }
 
 if (isset($_GET['check_csv'])) {
+    // CSV content check karo
     echo "<h3>CSV Content:</h3>";
     if (file_exists(CSV_FILE)) {
         $lines = file(CSV_FILE);
@@ -3154,6 +3282,7 @@ if (isset($_GET['check_csv'])) {
 }
 
 if (isset($_GET['test_stats'])) {
+    // Statistics test karo
     echo "<h3>Bot Statistics:</h3>";
     $stats = get_stats();
     echo "<pre>";
@@ -3170,6 +3299,7 @@ if (isset($_GET['test_stats'])) {
 
 // Webhook setup
 if (php_sapi_name() === 'cli' || isset($_GET['setwebhook'])) {
+    // Webhook setup karo
     $webhook_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]";
     $result = apiRequest('setWebhook', ['url' => $webhook_url]);
     
@@ -3198,6 +3328,7 @@ if (php_sapi_name() === 'cli' || isset($_GET['setwebhook'])) {
 
 // Default page display
 if (!isset($update) || !$update) {
+    // Bot status page show karo
     $stats = get_stats();
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     
