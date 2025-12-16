@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: entertainment-tadka-bot
+    env: docker
+    plan: free
+    docker:
+      dockerfile: Dockerfile
+    envVars:
+      - key: BOT_TOKEN
+        value: your_bot_token_here
+      - key: CHANNEL_ID
+        value: "-1003181705395"
+      - key: BACKUP_CHANNEL_ID
+        value: "-1002964109368"
+      - key: BACKUP_CHANNEL_USERNAME
+        value: "@ETBackup"
+      - key: ADMIN_ID
+        value: "1080317415"
+      - key: REQUEST_CHANNEL
+        value: "@EntertainmentTadka7860"
+      - key: MAIN_CHANNEL
+        value: "@EntertainmentTadka786"
+    healthCheckPath: /
+    autoDeploy: true

@@ -1,0 +1,21 @@
+RewriteEngine On
+
+# Security headers (headers module ke bina alternative)
+# Header always set X-Content-Type-Options nosniff
+# Header always set X-Frame-Options DENY  
+# Header always set X-XSS-Protection "1; mode=block"
+
+# PHP settings
+php_flag display_errors off
+php_value upload_max_filesize 10M
+php_value post_max_size 10M
+php_value memory_limit 256M
+php_value max_execution_time 300
+
+# API routes handle karo
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+
+# Bot webhook ke liye allow karo
+RewriteRule ^$ index.php [L]
