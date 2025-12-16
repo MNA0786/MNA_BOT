@@ -2502,22 +2502,23 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
     switch ($command) {
         // ==================== CORE COMMANDS ====================
         case '/start':
-            $welcome = "🎬 <b>Welcome to Entertainment Tadka!</b>\n\n";
-            $welcome .= "📢 <b>How to use this bot:</b>\n";
-            $welcome .= "• Simply type any movie name\n";
-            $welcome .= "• Use English or Hindi\n";
-            $welcome .= "• Partial names also work\n\n";
-            $welcome .= "🔍 <b>Examples:</b>\n";
-            $welcome .= "• kgf\n• pushpa\n• avengers\n• hindi movie\n• spider-man\n\n";
-            $welcome .= "❌ <b>Don't type:</b>\n";
-            $welcome .= "• Technical questions\n";
-            $welcome .= "• Player instructions\n";
-            $welcome .= "• Non-movie queries\n\n";
-            $welcome .= "📢 <b>Join Our Channels:</b>\n";
-            $welcome .= "🍿 Main: " . MAIN_CHANNEL . "\n";
-            $welcome .= "📥 Requests: " . REQUEST_CHANNEL . "\n";
-            $welcome .= "🔒 Backup: " . BACKUP_CHANNEL_USERNAME . "\n\n";
-            $welcome .= "💬 <b>Need help?</b> Use /help for all commands";
+    $welcome = "🎬 <b>Welcome to Entertainment Tadka!</b>\\n\\n";
+    $welcome .= "📢 <b>How to use this bot:</b>\\n";
+    $welcome .= "• Simply type any movie name\\n";
+    $welcome .= "• Use English or Hindi\\n";
+    $welcome .= "• Partial names also work\\n\\n";
+    $welcome .= "🔍 <b>Examples:</b>\\n";
+    $welcome .= "• kgf\\n• pushpa\\n• avengers\\n• hindi movie\\n• spider-man\\n\\n";
+    $welcome .= "❌ <b>Don't type:</b>\\n";
+    $welcome .= "• Technical questions\\n";
+    $welcome .= "• Player instructions\\n";
+    $welcome .= "• Non-movie queries\\n\\n";
+    $welcome .= "📢 <b>Join Our Channels:</b>\\n";
+    $welcome .= "🍿 Main: @EntertainmentTadka786\\n";
+    $welcome .= "📥 Requests: " . REQUEST_CHANNEL . "\\n";
+    $welcome .= "🔒 Backup: " . BACKUP_CHANNEL_USERNAME . "\\n\\n";
+    $welcome .= "💬 <b>Need help?</b> Use /help for all commands";
+    // ... rest of the code (keyboard, etc.)
 
             $keyboard = [
                 'inline_keyboard' => [
