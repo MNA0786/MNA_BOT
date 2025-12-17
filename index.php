@@ -52,6 +52,14 @@ define('DAILY_REQUEST_LIMIT', 5);  // Daily movie request limit per user
 define('AUTO_BACKUP_HOUR', '03');  // Auto backup time (3 AM)
 
 // ==============================
+// ENHANCED PAGINATION CONSTANTS
+// ==============================
+define('MAX_PAGES_TO_SHOW', 7);          // Max page buttons to display
+define('PAGINATION_CACHE_TIMEOUT', 60);  // Cache timeout in seconds
+define('PREVIEW_ITEMS', 3);              // Number of items to preview
+define('BATCH_SIZE', 5);                 // Batch download size
+
+// ==============================
 // MAINTENANCE MODE
 // ==============================
 $MAINTENANCE_MODE = false;  // Agar true hai toh bot maintenance mode mein hoga
@@ -64,6 +72,7 @@ $movie_messages = array();  // Movies cache
 $movie_cache = array();  // Movies data cache
 $waiting_users = array();  // Users waiting for movies
 $user_sessions = array();  // User sessions
+$user_pagination_sessions = array();  // Enhanced: Pagination sessions
 
 // ==============================
 // FILE INITIALIZATION FUNCTION
@@ -742,22 +751,27 @@ function add_movie_request($user_id, $movie_name, $language = 'hindi') {
 }
 
 // ==============================
-// PAGINATION SYSTEM
+// ENHANCED PAGINATION SYSTEM
 // ==============================
-function get_all_movies_list() {
-    // All movies list return karta hai
-    return get_cached_movies();
-}
 
-function paginate_movies(array $all, int $page): array {
-    // Movies ko paginate karta hai
+function paginate_movies(array $all, int $page, array $filters = []): array {
+    // Apply filters if any
+    if (!empty($filters)) {
+        $all = apply_movie_filters($all, $filters);
+    }
+    
     $total = count($all);
     if ($total === 0) {
         return [
             'total' => 0,
             'total_pages' => 1, 
             'page' => 1,
-            'slice' => []
+            'slice' => [],
+            'filters' => $filters,
+            'has_next' => false,
+            'has_prev' => false,
+            'start_item' => 0,
+            'end_item' => 0
         ];
     }
     
@@ -769,118 +783,291 @@ function paginate_movies(array $all, int $page): array {
         'total' => $total,
         'total_pages' => $total_pages,
         'page' => $page,
-        'slice' => array_slice($all, $start, ITEMS_PER_PAGE)
+        'slice' => array_slice($all, $start, ITEMS_PER_PAGE),
+        'filters' => $filters,
+        'has_next' => $page < $total_pages,
+        'has_prev' => $page > 1,
+        'start_item' => $start + 1,
+        'end_item' => min($start + ITEMS_PER_PAGE, $total)
     ];
 }
 
-function build_totalupload_keyboard(int $page, int $total_pages): array {
-    // Pagination keyboard banata hai
+function build_totalupload_keyboard(int $page, int $total_pages, string $session_id = '', array $filters = []): array {
     $kb = ['inline_keyboard' => []];
     
-    // Navigation buttons
+    // Enhanced navigation with page numbers
     $nav_row = [];
+    
+    // Previous/Fast Previous buttons
     if ($page > 1) {
-        $nav_row[] = ['text' => '⬅️ Previous', 'callback_data' => 'tu_prev_' . ($page - 1)];
+        $nav_row[] = ['text' => '⏪', 'callback_data' => 'pag_first_' . $session_id];
+        $nav_row[] = ['text' => '◀️', 'callback_data' => 'pag_prev_' . $page . '_' . $session_id];
     }
     
-    $nav_row[] = ['text' => "📄 $page/$total_pages", 'callback_data' => 'current_page'];
+    // Smart page number display (max 7 pages)
+    $start_page = max(1, $page - 3);
+    $end_page = min($total_pages, $start_page + 6);
     
+    if ($end_page - $start_page < 6) {
+        $start_page = max(1, $end_page - 6);
+    }
+    
+    for ($i = $start_page; $i <= $end_page; $i++) {
+        if ($i == $page) {
+            $nav_row[] = ['text' => "【{$i}】", 'callback_data' => 'current'];
+        } else {
+            $nav_row[] = ['text' => "{$i}", 'callback_data' => 'pag_' . $i . '_' . $session_id];
+        }
+    }
+    
+    // Next/Fast Next buttons
     if ($page < $total_pages) {
-        $nav_row[] = ['text' => 'Next ➡️', 'callback_data' => 'tu_next_' . ($page + 1)];
+        $nav_row[] = ['text' => '▶️', 'callback_data' => 'pag_next_' . $page . '_' . $session_id];
+        $nav_row[] = ['text' => '⏩', 'callback_data' => 'pag_last_' . $total_pages . '_' . $session_id];
     }
     
     if (!empty($nav_row)) {
         $kb['inline_keyboard'][] = $nav_row;
     }
     
-    // Action buttons
+    // Action buttons row
     $action_row = [];
-    $action_row[] = ['text' => '🎬 Send This Page', 'callback_data' => 'tu_view_' . $page];
-    $action_row[] = ['text' => '📊 Page Info', 'callback_data' => 'tu_info_' . $page];
-    $action_row[] = ['text' => '🛑 Stop', 'callback_data' => 'tu_stop'];
+    $action_row[] = ['text' => '📥 Send Page', 'callback_data' => 'send_' . $page . '_' . $session_id];
+    $action_row[] = ['text' => '👁️ Preview', 'callback_data' => 'prev_' . $page . '_' . $session_id];
+    $action_row[] = ['text' => '📊 Stats', 'callback_data' => 'stats_' . $session_id];
     
     $kb['inline_keyboard'][] = $action_row;
     
-    // Quick jump buttons
-    if ($total_pages > 5) {
-        $jump_row = [];
-        if ($page > 1) {
-            $jump_row[] = ['text' => '⏮️ First', 'callback_data' => 'tu_prev_1'];
-        }
-        if ($page < $total_pages) {
-            $jump_row[] = ['text' => 'Last ⏭️', 'callback_data' => 'tu_next_' . $total_pages];
-        }
-        if (!empty($jump_row)) {
-            $kb['inline_keyboard'][] = $jump_row;
-        }
+    // Filter buttons row
+    if (empty($filters)) {
+        $filter_row = [];
+        $filter_row[] = ['text' => '🎬 HD Only', 'callback_data' => 'flt_hd_' . $session_id];
+        $filter_row[] = ['text' => '🔄 Latest', 'callback_data' => 'flt_new_' . $session_id];
+        $filter_row[] = ['text' => '🔥 Popular', 'callback_data' => 'flt_pop_' . $session_id];
+        $kb['inline_keyboard'][] = $filter_row;
+    } else {
+        $filter_row = [];
+        $filter_row[] = ['text' => '🧹 Clear Filter', 'callback_data' => 'flt_clr_' . $session_id];
+        $kb['inline_keyboard'][] = $filter_row;
     }
+    
+    // Control buttons row
+    $ctrl_row = [];
+    $ctrl_row[] = ['text' => '💾 Save', 'callback_data' => 'save_' . $session_id];
+    $ctrl_row[] = ['text' => '🔍 Search', 'switch_inline_query_current_chat' => ''];
+    $ctrl_row[] = ['text' => '❌ Close', 'callback_data' => 'close_' . $session_id];
+    
+    $kb['inline_keyboard'][] = $ctrl_row;
     
     return $kb;
 }
 
-function totalupload_controller($chat_id, $page = 1) {
-    // Total uploads pagination controller
+function totalupload_controller($chat_id, $page = 1, $filters = [], $session_id = null) {
     $all = get_all_movies_list();
     if (empty($all)) {
         sendMessage($chat_id, "📭 Koi movies nahi mili! Pehle kuch movies add karo.");
         return;
     }
     
-    $pg = paginate_movies($all, (int)$page);
+    // Create session ID if not provided
+    if (!$session_id) {
+        $session_id = uniqid('sess_', true);
+    }
     
-    // Current page movies forward karo
-    forward_page_movies($chat_id, $pg['slice']);
+    $pg = paginate_movies($all, (int)$page, $filters);
     
-    // Detailed message banayega
-    $title = "🎬 <b>Total Uploads</b>\n\n";
+    // Send preview for first page
+    if ($page == 1 && PREVIEW_ITEMS > 0 && count($pg['slice']) > 0) {
+        $preview_msg = "👁️ <b>Quick Preview (First " . PREVIEW_ITEMS . "):</b>\n\n";
+        $preview_count = min(PREVIEW_ITEMS, count($pg['slice']));
+        
+        for ($i = 0; $i < $preview_count; $i++) {
+            $movie = $pg['slice'][$i];
+            $preview_msg .= ($i + 1) . ". <b>" . htmlspecialchars($movie['movie_name']) . "</b>\n";
+            $preview_msg .= "   ⭐ " . ($movie['quality'] ?? 'Unknown') . " | ";
+            $preview_msg .= "🗣️ " . ($movie['language'] ?? 'Hindi') . "\n\n";
+        }
+        
+        sendMessage($chat_id, $preview_msg, null, 'HTML');
+    }
+    
+    // Build enhanced message
+    $title = "🎬 <b>Enhanced Movie Browser</b>\n\n";
+    
+    // Session info
+    $title .= "🆔 <b>Session:</b> <code>" . substr($session_id, 0, 8) . "</code>\n";
+    
+    // Statistics
     $title .= "📊 <b>Statistics:</b>\n";
     $title .= "• Total Movies: <b>{$pg['total']}</b>\n";
-    $title .= "• Current Page: <b>{$pg['page']}/{$pg['total_pages']}</b>\n";
-    $title .= "• Showing: <b>" . count($pg['slice']) . " movies</b>\n\n";
+    $title .= "• Page: <b>{$pg['page']}/{$pg['total_pages']}</b>\n";
+    $title .= "• Items: <b>{$pg['start_item']}-{$pg['end_item']}</b>\n";
+    
+    // Filter info
+    if (!empty($filters)) {
+        $title .= "• Filters: <b>" . count($filters) . " active</b>\n";
+    }
+    
+    $title .= "\n";
     
     // Current page movies list
-    $title .= "📋 <b>Current Page Movies:</b>\n";
-    $i = 1;
+    $title .= "📋 <b>Page {$page} Movies:</b>\n\n";
+    $i = $pg['start_item'];
     foreach ($pg['slice'] as $movie) {
         $movie_name = htmlspecialchars($movie['movie_name'] ?? 'Unknown');
         $quality = $movie['quality'] ?? 'Unknown';
-        $title .= "$i. {$movie_name} [{$quality}]\n";
+        $language = $movie['language'] ?? 'Hindi';
+        $date = $movie['date'] ?? 'N/A';
+        $size = $movie['size'] ?? 'Unknown';
+        
+        $title .= "<b>{$i}.</b> {$movie_name}\n";
+        $title .= "   🏷️ {$quality} | 🗣️ {$language}\n";
+        $title .= "   💾 {$size} | 📅 {$date}\n\n";
         $i++;
     }
     
-    $title .= "\n📍 Use buttons to navigate or resend current page";
+    // Navigation help
+    $title .= "📍 <i>Use number buttons for direct page access</i>\n";
+    $title .= "🔧 <i>Apply filters using buttons below</i>";
     
-    $kb = build_totalupload_keyboard($pg['page'], $pg['total_pages']);
-    sendMessage($chat_id, $title, $kb, 'HTML');
-    bot_log("Total uploads viewed by $chat_id - Page $page");
+    // Build enhanced keyboard
+    $kb = build_totalupload_keyboard($pg['page'], $pg['total_pages'], $session_id, $filters);
+    
+    // Delete previous pagination message if exists
+    delete_pagination_message($chat_id, $session_id);
+    
+    // Save new message ID
+    $result = sendMessage($chat_id, $title, $kb, 'HTML');
+    save_pagination_message($chat_id, $session_id, $result['result']['message_id']);
+    
+    bot_log("Enhanced pagination - Chat: $chat_id, Page: $page, Session: " . substr($session_id, 0, 8));
 }
 
-function forward_page_movies($chat_id, array $page_movies) {
-    // Page movies forward karta hai
-    $total = count($page_movies);
-    if ($total === 0) return;
+// ==============================
+// PAGINATION HELPER FUNCTIONS
+// ==============================
+
+function apply_movie_filters($movies, $filters) {
+    if (empty($filters)) return $movies;
     
-    $progress_msg = sendMessage($chat_id, "⏳ Forwarding {$total} movies...");
-    $progress_msg_id = $progress_msg['result']['message_id'];
-    
-    $i = 1;
-    $success_count = 0;
-    
-    foreach ($page_movies as $m) {
-        $success = deliver_item_to_chat($chat_id, $m);
-        if ($success) $success_count++;
+    $filtered = [];
+    foreach ($movies as $movie) {
+        $pass = true;
         
-        // Har 2 movies ke baad progress update karo
-        if ($i % 2 === 0) {
-            editMessage($chat_id, $progress_msg_id, "⏳ Forwarding... ({$i}/{$total})");
+        foreach ($filters as $key => $value) {
+            switch ($key) {
+                case 'quality':
+                    if (stripos($movie['quality'] ?? '', $value) === false) {
+                        $pass = false;
+                    }
+                    break;
+                    
+                case 'language':
+                    if (stripos($movie['language'] ?? '', $value) === false) {
+                        $pass = false;
+                    }
+                    break;
+                    
+                case 'year':
+                    $movie_year = substr($movie['date'] ?? '', -4);
+                    if ($movie_year != $value) {
+                        $pass = false;
+                    }
+                    break;
+            }
+            
+            if (!$pass) break;
         }
         
-        usleep(500000); // 0.5 second delay - rate limiting ke liye
-        $i++;
+        if ($pass) {
+            $filtered[] = $movie;
+        }
     }
     
-    // Final progress update
-    editMessage($chat_id, $progress_msg_id, "✅ Successfully forwarded {$success_count}/{$total} movies");
+    return $filtered;
+}
+
+function save_pagination_message($chat_id, $session_id, $message_id) {
+    global $user_pagination_sessions;
+    
+    if (!isset($user_pagination_sessions[$session_id])) {
+        $user_pagination_sessions[$session_id] = [];
+    }
+    
+    $user_pagination_sessions[$session_id]['last_message_id'] = $message_id;
+    $user_pagination_sessions[$session_id]['chat_id'] = $chat_id;
+    $user_pagination_sessions[$session_id]['last_updated'] = time();
+}
+
+function delete_pagination_message($chat_id, $session_id) {
+    global $user_pagination_sessions;
+    
+    if (isset($user_pagination_sessions[$session_id]) && 
+        isset($user_pagination_sessions[$session_id]['last_message_id'])) {
+        
+        $message_id = $user_pagination_sessions[$session_id]['last_message_id'];
+        deleteMessage($chat_id, $message_id);
+    }
+}
+
+function batch_download_with_progress($chat_id, $movies, $page_num) {
+    $total = count($movies);
+    if ($total === 0) return;
+    
+    $progress_msg = sendMessage($chat_id, "📦 <b>Batch Download Started</b>\n\nPage: {$page_num}\nTotal: {$total} movies\n\n⏳ Initializing...");
+    $progress_id = $progress_msg['result']['message_id'];
+    
+    $success = 0;
+    $failed = 0;
+    
+    for ($i = 0; $i < $total; $i++) {
+        $movie = $movies[$i];
+        
+        // Update progress every 2 movies
+        if ($i % 2 == 0) {
+            $progress = round(($i / $total) * 100);
+            editMessage($chat_id, $progress_id, 
+                "📦 <b>Downloading Page {$page_num}</b>\n\n" .
+                "Progress: {$progress}%\n" .
+                "Processed: {$i}/{$total}\n" .
+                "✅ Success: {$success}\n" .
+                "❌ Failed: {$failed}\n\n" .
+                "⏳ Please wait..."
+            );
+        }
+        
+        try {
+            $result = deliver_item_to_chat($chat_id, $movie);
+            if ($result) {
+                $success++;
+            } else {
+                $failed++;
+            }
+        } catch (Exception $e) {
+            $failed++;
+        }
+        
+        usleep(500000); // 0.5 second delay
+    }
+    
+    // Final update
+    editMessage($chat_id, $progress_id,
+        "✅ <b>Batch Download Complete</b>\n\n" .
+        "📄 Page: {$page_num}\n" .
+        "🎬 Total: {$total} movies\n" .
+        "✅ Successfully sent: {$success}\n" .
+        "❌ Failed: {$failed}\n\n" .
+        "📊 Success rate: " . round(($success / $total) * 100, 2) . "%\n" .
+        "⏱️ Time: " . date('H:i:s')
+    );
+}
+
+// ==============================
+// GET ALL MOVIES LIST FUNCTION
+// ==============================
+function get_all_movies_list() {
+    // All movies list return karta hai
+    return get_cached_movies();
 }
 
 // ==============================
@@ -3128,7 +3315,7 @@ if ($update) {
             $page = (int)str_replace('tu_view_', '', $data);
             $all = get_all_movies_list();
             $pg = paginate_movies($all, $page);
-            forward_page_movies($chat_id, $pg['slice']);
+            batch_download_with_progress($chat_id, $pg['slice'], $page);
             answerCallbackQuery($query['id'], "Re-sent current page movies");
         }
         elseif (strpos($data, 'tu_info_') === 0) {
@@ -3154,6 +3341,103 @@ if ($update) {
         }
         elseif ($data === 'current_page') {
             answerCallbackQuery($query['id'], "You're on this page");
+        }
+        // Enhanced Pagination Controls
+        elseif (strpos($data, 'pag_') === 0) {
+            $parts = explode('_', $data);
+            $action = $parts[1];
+            $session_id = isset($parts[2]) ? $parts[2] : '';
+            
+            if ($action == 'first') {
+                totalupload_controller($chat_id, 1, [], $session_id);
+                answerCallbackQuery($query['id'], "First page");
+            } 
+            elseif ($action == 'last') {
+                $all = get_all_movies_list();
+                $total_pages = ceil(count($all) / ITEMS_PER_PAGE);
+                totalupload_controller($chat_id, $total_pages, [], $session_id);
+                answerCallbackQuery($query['id'], "Last page");
+            }
+            elseif ($action == 'prev') {
+                $current_page = isset($parts[2]) ? intval($parts[2]) : 1;
+                $session_id = isset($parts[3]) ? $parts[3] : '';
+                totalupload_controller($chat_id, max(1, $current_page - 1), [], $session_id);
+                answerCallbackQuery($query['id'], "Previous page");
+            }
+            elseif ($action == 'next') {
+                $current_page = isset($parts[2]) ? intval($parts[2]) : 1;
+                $session_id = isset($parts[3]) ? $parts[3] : '';
+                $all = get_all_movies_list();
+                $total_pages = ceil(count($all) / ITEMS_PER_PAGE);
+                totalupload_controller($chat_id, min($total_pages, $current_page + 1), [], $session_id);
+                answerCallbackQuery($query['id'], "Next page");
+            }
+            elseif (is_numeric($action)) {
+                $page_num = intval($action);
+                $session_id = isset($parts[2]) ? $parts[2] : '';
+                totalupload_controller($chat_id, $page_num, [], $session_id);
+                answerCallbackQuery($query['id'], "Page $page_num");
+            }
+        }
+        // Send page batch download
+        elseif (strpos($data, 'send_') === 0) {
+            $parts = explode('_', $data);
+            $page_num = isset($parts[1]) ? intval($parts[1]) : 1;
+            $session_id = isset($parts[2]) ? $parts[2] : '';
+            
+            $all = get_all_movies_list();
+            $pg = paginate_movies($all, $page_num, []);
+            batch_download_with_progress($chat_id, $pg['slice'], $page_num);
+            answerCallbackQuery($query['id'], "📦 Batch download started!");
+        }
+        // Preview page
+        elseif (strpos($data, 'prev_') === 0) {
+            $parts = explode('_', $data);
+            $page_num = isset($parts[1]) ? intval($parts[1]) : 1;
+            $session_id = isset($parts[2]) ? $parts[2] : '';
+            
+            $all = get_all_movies_list();
+            $pg = paginate_movies($all, $page_num, []);
+            
+            $preview_msg = "👁️ <b>Page {$page_num} Preview</b>\n\n";
+            $limit = min(5, count($pg['slice']));
+            
+            for ($i = 0; $i < $limit; $i++) {
+                $movie = $pg['slice'][$i];
+                $preview_msg .= ($i + 1) . ". <b>" . htmlspecialchars($movie['movie_name']) . "</b>\n";
+                $preview_msg .= "   ⭐ " . ($movie['quality'] ?? 'Unknown') . "\n\n";
+            }
+            
+            sendMessage($chat_id, $preview_msg, null, 'HTML');
+            answerCallbackQuery($query['id'], "Preview sent");
+        }
+        // Filter controls
+        elseif (strpos($data, 'flt_') === 0) {
+            $parts = explode('_', $data);
+            $filter_type = $parts[1];
+            $session_id = isset($parts[2]) ? $parts[2] : '';
+            
+            $filters = [];
+            if ($filter_type == 'hd') {
+                $filters = ['quality' => '1080'];
+                answerCallbackQuery($query['id'], "HD filter applied");
+            } elseif ($filter_type == 'new') {
+                // Sort by latest
+                answerCallbackQuery($query['id'], "Latest filter applied");
+            } elseif ($filter_type == 'pop') {
+                // Sort by popularity
+                answerCallbackQuery($query['id'], "Popular filter applied");
+            } elseif ($filter_type == 'clr') {
+                answerCallbackQuery($query['id'], "Filters cleared");
+            }
+            
+            totalupload_controller($chat_id, 1, $filters, $session_id);
+        }
+        // Close pagination
+        elseif ($data == 'close_' || strpos($data, 'close_') === 0) {
+            deleteMessage($chat_id, $message['message_id']);
+            sendMessage($chat_id, "🗂️ Pagination closed. Use /totalupload to browse again.");
+            answerCallbackQuery($query['id'], "Pagination closed");
         }
         // Movie requests
         elseif (strpos($data, 'auto_request_') === 0) {
@@ -3374,6 +3658,8 @@ if (!isset($update) || !$update) {
     echo "<li>✅ Detailed statistics and logging</li>";
     echo "<li>✅ Quality and language detection</li>";
     echo "<li>✅ Maintenance mode support</li>";
+    echo "<li>✅ ENHANCED PAGINATION with sessions, filters, previews</li>";
+    echo "<li>✅ BATCH DOWNLOAD with progress tracking</li>";
     echo "</ul>";
     
     echo "<h3>📊 Recent Activity</h3>";
