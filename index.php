@@ -13,6 +13,13 @@ header("Strict-Transport-Security: max-age=31536000; includeSubDomains");
 $port = getenv('PORT') ?: '80';
 $webhook_url = getenv('RENDER_EXTERNAL_URL') ?: 'https://your-bot-name.onrender.com';
 
+// Temporary debug ke liye - index.php ke starting me add karo
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+
+// Check karo environment variables properly load ho rahe hain ya nahi
+
 if (!getenv('BOT_TOKEN')) {
     die("❌ BOT_TOKEN environment variable set nahi hai.");
 }
