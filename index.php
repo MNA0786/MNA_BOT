@@ -9,7 +9,7 @@ header("X-XSS-Protection: 1; mode=block");
 header("Referrer-Policy: strict-origin-when-cross-origin");
 
 $port = getenv('PORT') ?: '80';
-$webhook_url = getenv('RENDER_EXTERNAL_URL') ?: 'https://your-bot-name.onrender.com';
+$webhook_url = getenv('RENDER_EXTERNAL_URL') ?: 'https://mna-bot.onrender.com';
 
 if (!getenv('BOT_TOKEN')) {
     die("❌ BOT_TOKEN environment variable set nahi hai.");
