@@ -1,6 +1,6 @@
 <?php
 // ============================================================================
-// ENTERTAINMENT TADKA BOT - COMPLETE MERGED VERSION (4732+ LINES)
+// ENTERTAINMENT TADKA BOT - COMPLETE MERGED VERSION (4732 LINES)
 // ============================================================================
 
 // ==============================
@@ -224,32 +224,63 @@ function copyMessage($chat_id, $from_chat_id, $message_id) {
 }
 
 // ==============================
-// STEP 4: MOVIE DELIVERY SYSTEM
+// STEP 4: UPDATED MOVIE DELIVERY SYSTEM - COPY PRIORITY
 // ==============================
 function deliver_item_to_chat($chat_id, $item) {
+    // Pehle copyMessage try karo (source visible nahi hoga)
     if (!empty($item['message_id']) && is_numeric($item['message_id'])) {
-        $result = json_decode(forwardMessage($chat_id, CHANNEL_ID, $item['message_id']), true);
+        $result = json_decode(copyMessage($chat_id, CHANNEL_ID, $item['message_id']), true);
         
         if ($result && $result['ok']) {
             update_stats('total_downloads', 1);
-            bot_log("Movie forwarded from CHANNEL: {$item['movie_name']} to $chat_id");
+            bot_log("Movie COPIED from CHANNEL: {$item['movie_name']} to $chat_id");
             return true;
         } else {
-            copyMessage($chat_id, CHANNEL_ID, $item['message_id']);
+            // Copy fail hua toh forward try karo
+            forwardMessage($chat_id, CHANNEL_ID, $item['message_id']);
             update_stats('total_downloads', 1);
-            bot_log("Movie copied from CHANNEL: {$item['movie_name']} to $chat_id");
+            bot_log("Movie forwarded from CHANNEL: {$item['movie_name']} to $chat_id");
             return true;
         }
     }
 
+    // Minimal text format (no source mention)
     $text = "🎬 <b>" . ($item['movie_name'] ?? 'Unknown') . "</b>\n";
     $text .= "📊 Quality: " . ($item['quality'] ?? 'Unknown') . "\n";
     $text .= "💾 Size: " . ($item['size'] ?? 'Unknown') . "\n";
     $text .= "🗣️ Language: " . ($item['language'] ?? 'Hindi') . "\n";
-    $text .= "📅 Date: " . ($item['date'] ?? 'N/A') . "\n";
-    $text .= "🔗 Source: Private Movies Channel";
     
     sendMessage($chat_id, $text, null, 'HTML');
+    return false;
+}
+
+// ==============================
+// STEP 4.1: SILENT DELIVERY SYSTEM (OPTIONAL)
+// ==============================
+function silent_delivery($chat_id, $item) {
+    // Priority: COPY first (no source visible)
+    if (!empty($item['message_id']) && is_numeric($item['message_id'])) {
+        try {
+            $result = json_decode(copyMessage($chat_id, CHANNEL_ID, $item['message_id']), true);
+            
+            if ($result && $result['ok']) {
+                update_stats('total_downloads', 1);
+                return true;
+            }
+        } catch (Exception $e) {
+            // Silent fail
+        }
+    }
+    
+    // Fallback: forward but minimal info
+    if (!empty($item['message_id']) && is_numeric($item['message_id'])) {
+        forwardMessage($chat_id, CHANNEL_ID, $item['message_id']);
+        update_stats('total_downloads', 1);
+        return true;
+    }
+    
+    // Last resort: very minimal text
+    sendMessage($chat_id, "🎬 " . substr($item['movie_name'] ?? 'Movie', 0, 50));
     return false;
 }
 
@@ -3233,13 +3264,14 @@ if ($update) {
             $cnt = 0;
             
             foreach ($entries as $entry) {
-                deliver_item_to_chat($chat_id, $entry);
-                usleep(200000);
+                // Silent delivery using COPY priority
+                silent_delivery($chat_id, $entry);
+                usleep(150000);
                 $cnt++;
             }
             
-            sendMessage($chat_id, "✅ '$data' ke $cnt messages forward/send ho gaye!\n\n📢 Join our channel: " . MAIN_CHANNEL);
-            answerCallbackQuery($query['id'], "🎬 $cnt items sent!");
+            // Minimal confirmation
+            answerCallbackQuery($query['id'], "✅ " . $cnt . " movies sent");
             update_user_activity($user_id, 'download');
         }
         elseif (strpos($data, 'pag_') === 0) {
