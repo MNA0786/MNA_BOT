@@ -21,13 +21,13 @@ if (!getenv('BOT_TOKEN')) {
 // ENVIRONMENT VARIABLES CONFIGURATION
 // ==============================
 
-define('BOT_TOKEN', getenv('BOT_TOKEN'));
-define('CHANNEL_ID', getenv('CHANNEL_ID', '-1003251791991'));
-define('BACKUP_CHANNEL_ID', getenv('BACKUP_CHANNEL_ID', '-1002964109368'));
-define('BACKUP_CHANNEL_USERNAME', getenv('BACKUP_CHANNEL_USERNAME', '@ETBackup'));
-define('ADMIN_ID', (int)getenv('ADMIN_ID', '1080317415'));
-define('REQUEST_CHANNEL', getenv('REQUEST_CHANNEL', '@EntertainmentTadka7860'));
-define('MAIN_CHANNEL', getenv('MAIN_CHANNEL', '@EntertainmentTadka786'));
+define('BOT_TOKEN', '8315381064:AAGk0FGVGmB8j5SjpBvW3rD3_kQHe_hyOWU');
+define('CHANNEL_ID', '-1003251791991');
+define('BACKUP_CHANNEL_ID', '-1002964109368');
+define('BACKUP_CHANNEL_USERNAME', '@ETBackup');
+define('ADMIN_ID', 1080317415);
+define('REQUEST_CHANNEL', '@EntertainmentTadka7860');
+define('MAIN_CHANNEL', '@EntertainmentTadka786');
 
 define('CSV_FILE', 'movies.csv');
 define('USERS_FILE', 'users.json');
