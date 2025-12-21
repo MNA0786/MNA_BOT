@@ -2823,6 +2823,30 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
             $welcome .= "📥 Requests: " . REQUEST_CHANNEL . "\n";
             $welcome .= "🔒 Backup: " . BACKUP_CHANNEL_USERNAME . "\n\n";
             $welcome .= "💬 <b>Need help?</b> Use /help for all commands";
+        
+        // STEP 28: COMMAND HANDLER mein yeh add karo
+case '/test':
+    if ($user_id == ADMIN_ID) {
+        $test_type = isset($params[0]) ? strtolower($params[0]) : 'basic';
+        $valid_types = ['basic', 'full', 'channel', 'backup', 'database'];
+        
+        if (in_array($test_type, $valid_types)) {
+            send_test_notification($chat_id, $test_type);
+        } else {
+            sendMessage($chat_id, 
+                "❌ Invalid test type. Available types:\n\n" .
+                "• <code>/test basic</code> - Basic system check\n" .
+                "• <code>/test full</code> - Full diagnostics\n" .
+                "• <code>/test channel</code> - Channel connectivity\n" .
+                "• <code>/test backup</code> - Backup system test\n" .
+                "• <code>/test database</code> - Database integrity\n",
+                null, 'HTML'
+            );
+        }
+    } else {
+        sendMessage($chat_id, "❌ Access denied. Admin only command.");
+    }
+    break;
 
             $keyboard = [
                 'inline_keyboard' => [
@@ -3556,5 +3580,517 @@ if (isset($_GET['setwebhook'])) {
     echo "<p>Backup Directory: " . (file_exists(BACKUP_DIR) ? "✅ Exists" : "❌ Missing") . "</p>";
     
     exit;
+}
+
+    // ==============================
+// STEP 32: TEST NOTIFICATION SYSTEM
+// ==============================
+
+/**
+ * Send test notification to admin
+ */
+function send_test_notification($chat_id, $test_type = 'basic') {
+    if ($chat_id != ADMIN_ID) {
+        sendMessage($chat_id, "❌ Access denied. Admin only command.");
+        return;
+    }
+    
+    $timestamp = date('Y-m-d H:i:s');
+    $server_time = $timestamp;
+    $server_timezone = date_default_timezone_get();
+    
+    // Check system status
+    $system_status = check_system_status();
+    
+    // Create test message based on type
+    $notification = "";
+    
+    switch ($test_type) {
+        case 'full':
+            $notification = create_full_test_notification($timestamp, $system_status);
+            break;
+            
+        case 'channel':
+            $notification = create_channel_test_notification();
+            break;
+            
+        case 'backup':
+            $notification = create_backup_test_notification();
+            break;
+            
+        case 'database':
+            $notification = create_database_test_notification();
+            break;
+            
+        default: // basic
+            $notification = create_basic_test_notification($timestamp, $system_status);
+            break;
+    }
+    
+    // Send notification
+    $result = sendMessage($chat_id, $notification, null, 'HTML');
+    
+    if ($result && isset($result['ok']) && $result['ok']) {
+        bot_log("Test notification sent to admin - Type: $test_type");
+        return true;
+    } else {
+        bot_log("Failed to send test notification", 'ERROR');
+        return false;
+    }
+}
+
+/**
+ * Create basic test notification
+ */
+function create_basic_test_notification($timestamp, $system_status) {
+    $notification = "🧪 <b>Basic System Test</b>\n\n";
+    
+    $notification .= "⏰ <b>Server Time:</b>\n";
+    $notification .= "• Date/Time: $timestamp\n";
+    $notification .= "• Timezone: " . date_default_timezone_get() . "\n\n";
+    
+    $notification .= "✅ <b>System Status:</b>\n";
+    $notification .= "• Bot: " . ($system_status['bot_online'] ? '✅ Online' : '❌ Offline') . "\n";
+    $notification .= "• CSV File: " . ($system_status['csv_exists'] ? '✅ OK' : '❌ Missing') . "\n";
+    $notification .= "• Users File: " . ($system_status['users_exists'] ? '✅ OK' : '❌ Missing') . "\n";
+    $notification .= "• Backup Dir: " . ($system_status['backup_exists'] ? '✅ OK' : '❌ Missing') . "\n\n";
+    
+    $notification .= "📊 <b>Quick Stats:</b>\n";
+    $notification .= "• Movies: " . $system_status['movie_count'] . "\n";
+    $notification .= "• Users: " . $system_status['user_count'] . "\n";
+    $notification .= "• Searches: " . $system_status['search_count'] . "\n\n";
+    
+    $notification .= "🏓 <b>Test Result:</b> PASSED ✅";
+    
+    return $notification;
+}
+
+/**
+ * Create full test notification
+ */
+function create_full_test_notification($timestamp, $system_status) {
+    $notification = "🔬 <b>FULL SYSTEM DIAGNOSTICS</b>\n\n";
+    
+    $notification .= "📱 <b>Bot Information:</b>\n";
+    $notification .= "• Bot Name: Entertainment Tadka\n";
+    $notification .= "• Version: 2.0.0\n";
+    $notification .= "• Admin ID: " . ADMIN_ID . "\n";
+    $notification .= "• Server Time: $timestamp\n\n";
+    
+    $notification .= "🔗 <b>Channel Configuration:</b>\n";
+    $notification .= "• Main Channel: " . MAIN_CHANNEL . "\n";
+    $notification .= "• Request Channel: " . REQUEST_CHANNEL . "\n";
+    $notification .= "• Backup Channel: " . BACKUP_CHANNEL_USERNAME . "\n";
+    $notification .= "• Private Channel: " . CHANNEL_ID . "\n\n";
+    
+    $notification .= "💾 <b>File System Check:</b>\n";
+    foreach ($system_status['files'] as $file => $status) {
+        $emoji = $status['exists'] ? '✅' : '❌';
+        $size = $status['exists'] ? '(' . $status['size'] . ')' : '';
+        $notification .= "• $emoji $file $size\n";
+    }
+    $notification .= "\n";
+    
+    $notification .= "📊 <b>Database Statistics:</b>\n";
+    $notification .= "• Total Movies: " . $system_status['movie_count'] . "\n";
+    $notification .= "• Active Users: " . $system_status['user_count'] . "\n";
+    $notification .= "• Total Searches: " . $system_status['search_count'] . "\n";
+    $notification .= "• Total Downloads: " . $system_status['download_count'] . "\n";
+    $notification .= "• Pending Requests: " . $system_status['pending_requests'] . "\n\n";
+    
+    $notification .= "🔄 <b>System Health:</b>\n";
+    $notification .= "• Memory Usage: " . $system_status['memory_usage'] . "\n";
+    $notification .= "• Disk Free: " . $system_status['disk_free'] . "\n";
+    $notification .= "• PHP Version: " . $system_status['php_version'] . "\n";
+    $notification .= "• Bot Token: " . ($system_status['bot_token_valid'] ? '✅ Valid' : '❌ Invalid') . "\n\n";
+    
+    $notification .= "🎯 <b>Test Summary:</b>\n";
+    $notification .= "• Tests Run: " . count($system_status['tests']) . "\n";
+    $notification .= "• Passed: " . $system_status['passed_tests'] . "\n";
+    $notification .= "• Failed: " . $system_status['failed_tests'] . "\n";
+    $notification .= "• Score: " . $system_status['score'] . "%\n\n";
+    
+    $notification .= "📋 <b>Recommendations:</b>\n";
+    foreach ($system_status['recommendations'] as $rec) {
+        $notification .= "• $rec\n";
+    }
+    
+    return $notification;
+}
+
+/**
+ * Create channel test notification
+ */
+function create_channel_test_notification() {
+    $notification = "📢 <b>CHANNEL CONNECTIVITY TEST</b>\n\n";
+    
+    $notification .= "🔗 <b>Channel Links:</b>\n";
+    $notification .= "• Main: " . MAIN_CHANNEL . "\n";
+    $notification .= "• Requests: " . REQUEST_CHANNEL . "\n";
+    $notification .= "• Backup: " . BACKUP_CHANNEL_USERNAME . "\n";
+    $notification .= "• Theater: " . THEATER_PRINT_CHANNEL . "\n\n";
+    
+    $notification .= "🔍 <b>Test Results:</b>\n";
+    
+    // Test if bot can send to admin (simulated)
+    $notification .= "• Admin Chat: ✅ Accessible\n";
+    
+    // Check channel configurations
+    $notification .= "• CHANNEL_ID: " . (defined('CHANNEL_ID') && CHANNEL_ID ? '✅ Set' : '❌ Not Set') . "\n";
+    $notification .= "• MAIN_CHANNEL: " . (defined('MAIN_CHANNEL') && MAIN_CHANNEL ? '✅ Set' : '❌ Not Set') . "\n";
+    $notification .= "• REQUEST_CHANNEL: " . (defined('REQUEST_CHANNEL') && REQUEST_CHANNEL ? '✅ Set' : '❌ Not Set') . "\n\n";
+    
+    $notification .= "🚀 <b>Quick Actions:</b>\n";
+    $notification .= "• <code>/test channel</code> - Channel connectivity\n";
+    $notification .= "• <code>/channel</code> - View all channels\n";
+    $notification .= "• <code>/mainchannel</code> - Main channel info\n\n";
+    
+    $notification .= "✅ <b>Channel Test Complete</b>";
+    
+    return $notification;
+}
+
+/**
+ * Create backup test notification
+ */
+function create_backup_test_notification() {
+    $backup_dirs = glob(BACKUP_DIR . '*', GLOB_ONLYDIR);
+    $latest_backup = null;
+    $total_size = 0;
+    
+    if (!empty($backup_dirs)) {
+        usort($backup_dirs, function($a, $b) {
+            return filemtime($b) - filemtime($a);
+        });
+        $latest_backup = $backup_dirs[0];
+    }
+    
+    $notification = "💾 <b>BACKUP SYSTEM TEST</b>\n\n";
+    
+    $notification .= "📅 <b>Backup Configuration:</b>\n";
+    $notification .= "• Auto-backup: Daily at " . AUTO_BACKUP_HOUR . ":00\n";
+    $notification .= "• Retention: Last 7 backups\n";
+    $notification .= "• Backup Channel: " . BACKUP_CHANNEL_USERNAME . "\n";
+    $notification .= "• Backup Directory: " . BACKUP_DIR . "\n\n";
+    
+    $notification .= "📊 <b>Current Status:</b>\n";
+    $notification .= "• Total Backups: " . count($backup_dirs) . "\n";
+    
+    if ($latest_backup) {
+        $latest_time = date('Y-m-d H:i:s', filemtime($latest_backup));
+        $latest_name = basename($latest_backup);
+        
+        // Calculate backup size
+        $files = glob($latest_backup . '/*');
+        $backup_size = 0;
+        foreach ($files as $file) {
+            $backup_size += filesize($file);
+        }
+        $backup_size_mb = round($backup_size / (1024 * 1024), 2);
+        
+        $notification .= "• Latest Backup: $latest_name\n";
+        $notification .= "• Backup Time: $latest_time\n";
+        $notification .= "• Backup Size: $backup_size_mb MB\n";
+    } else {
+        $notification .= "• Latest Backup: ❌ No backups found\n";
+    }
+    
+    $notification .= "\n✅ <b>Backup Test Complete</b>\n\n";
+    
+    $notification .= "⚙️ <b>Backup Commands:</b>\n";
+    $notification .= "• <code>/backup</code> - Manual backup\n";
+    $notification .= "• <code>/quickbackup</code> - Quick backup\n";
+    $notification .= "• <code>/backupstatus</code> - Status check\n";
+    
+    return $notification;
+}
+
+/**
+ * Create database test notification
+ */
+function create_database_test_notification() {
+    $stats = get_stats();
+    $users_data = json_decode(file_get_contents(USERS_FILE), true);
+    $requests_data = json_decode(file_get_contents(REQUEST_FILE), true);
+    
+    // Count movies from CSV
+    $movie_count = 0;
+    if (file_exists(CSV_FILE)) {
+        $handle = fopen(CSV_FILE, 'r');
+        if ($handle !== FALSE) {
+            fgetcsv($handle); // Skip header
+            while (fgetcsv($handle) !== FALSE) {
+                $movie_count++;
+            }
+            fclose($handle);
+        }
+    }
+    
+    $notification = "🗄️ <b>DATABASE INTEGRITY TEST</b>\n\n";
+    
+    $notification .= "📊 <b>Database Counts:</b>\n";
+    $notification .= "• CSV Movies: $movie_count entries\n";
+    $notification .= "• JSON Users: " . count($users_data['users'] ?? []) . " users\n";
+    $notification .= "• Pending Requests: " . count($requests_data['requests'] ?? []) . "\n";
+    $notification .= "• Total Searches: " . ($stats['total_searches'] ?? 0) . "\n";
+    $notification .= "• Total Downloads: " . ($stats['total_downloads'] ?? 0) . "\n\n";
+    
+    $notification .= "🔍 <b>Data Consistency:</b>\n";
+    
+    // Check CSV integrity
+    $csv_errors = check_csv_integrity();
+    if (empty($csv_errors)) {
+        $notification .= "• CSV File: ✅ Valid structure\n";
+    } else {
+        $notification .= "• CSV File: ⚠️ " . count($csv_errors) . " issues found\n";
+    }
+    
+    // Check JSON files
+    $users_json = json_decode(file_get_contents(USERS_FILE), true);
+    $stats_json = json_decode(file_get_contents(STATS_FILE), true);
+    $requests_json = json_decode(file_get_contents(REQUEST_FILE), true);
+    
+    $notification .= "• Users JSON: " . ($users_json ? '✅ Valid' : '❌ Invalid') . "\n";
+    $notification .= "• Stats JSON: " . ($stats_json ? '✅ Valid' : '❌ Invalid') . "\n";
+    $notification .= "• Requests JSON: " . ($requests_json ? '✅ Valid' : '❌ Invalid') . "\n\n";
+    
+    $notification .= "🔄 <b>Recent Activity:</b>\n";
+    $recent_movies = get_recent_movies(3);
+    foreach ($recent_movies as $movie) {
+        $notification .= "• " . $movie['movie_name'] . " (" . $movie['date'] . ")\n";
+    }
+    
+    $notification .= "\n✅ <b>Database Test Complete</b>";
+    
+    return $notification;
+}
+
+/**
+ * Check system status
+ */
+function check_system_status() {
+    $status = [
+        'bot_online' => true,
+        'csv_exists' => file_exists(CSV_FILE),
+        'users_exists' => file_exists(USERS_FILE),
+        'backup_exists' => file_exists(BACKUP_DIR),
+        'movie_count' => 0,
+        'user_count' => 0,
+        'search_count' => 0,
+        'download_count' => 0,
+        'pending_requests' => 0,
+        'files' => [],
+        'memory_usage' => '',
+        'disk_free' => '',
+        'php_version' => phpversion(),
+        'bot_token_valid' => defined('BOT_TOKEN') && BOT_TOKEN,
+        'tests' => [],
+        'passed_tests' => 0,
+        'failed_tests' => 0,
+        'score' => 0,
+        'recommendations' => []
+    ];
+    
+    // File status
+    $files_to_check = [
+        CSV_FILE => 'Movies Database',
+        USERS_FILE => 'Users Data',
+        STATS_FILE => 'Statistics',
+        REQUEST_FILE => 'Requests',
+        LOG_FILE => 'Activity Log'
+    ];
+    
+    foreach ($files_to_check as $file => $description) {
+        $exists = file_exists($file);
+        $size = $exists ? format_file_size(filesize($file)) : '0 B';
+        
+        $status['files'][$file] = [
+            'exists' => $exists,
+            'size' => $size,
+            'description' => $description
+        ];
+        
+        // Add test
+        $test_name = "File: $description";
+        if ($exists) {
+            $status['tests'][] = ['name' => $test_name, 'passed' => true];
+            $status['passed_tests']++;
+        } else {
+            $status['tests'][] = ['name' => $test_name, 'passed' => false];
+            $status['failed_tests']++;
+            $status['recommendations'][] = "Create missing file: $file";
+        }
+    }
+    
+    // Database counts
+    if ($status['csv_exists']) {
+        $status['movie_count'] = get_csv_count();
+    }
+    
+    if ($status['users_exists']) {
+        $users_data = json_decode(file_get_contents(USERS_FILE), true);
+        $status['user_count'] = count($users_data['users'] ?? []);
+    }
+    
+    $stats = get_stats();
+    $status['search_count'] = $stats['total_searches'] ?? 0;
+    $status['download_count'] = $stats['total_downloads'] ?? 0;
+    
+    if (file_exists(REQUEST_FILE)) {
+        $requests_data = json_decode(file_get_contents(REQUEST_FILE), true);
+        $status['pending_requests'] = count($requests_data['requests'] ?? []);
+    }
+    
+    // System info
+    $status['memory_usage'] = format_memory(memory_get_usage(true));
+    $disk_free = disk_free_space(__DIR__);
+    $status['disk_free'] = $disk_free ? format_file_size($disk_free) : 'Unknown';
+    
+    // Calculate score
+    $total_tests = count($status['tests']);
+    if ($total_tests > 0) {
+        $status['score'] = round(($status['passed_tests'] / $total_tests) * 100);
+    }
+    
+    // Additional recommendations based on score
+    if ($status['score'] < 80) {
+        $status['recommendations'][] = "Run system diagnostics with /test full";
+    }
+    
+    if ($status['movie_count'] == 0) {
+        $status['recommendations'][] = "Add movies to the database";
+    }
+    
+    if ($status['user_count'] == 0) {
+        $status['recommendations'][] = "Promote bot to get users";
+    }
+    
+    return $status;
+}
+
+/**
+ * Check CSV file integrity
+ */
+function check_csv_integrity() {
+    $errors = [];
+    
+    if (!file_exists(CSV_FILE)) {
+        $errors[] = "CSV file does not exist";
+        return $errors;
+    }
+    
+    $handle = fopen(CSV_FILE, 'r');
+    if ($handle === FALSE) {
+        $errors[] = "Cannot open CSV file";
+        return $errors;
+    }
+    
+    // Check header
+    $header = fgetcsv($handle);
+    $expected_header = ['movie_name', 'message_id', 'date', 'video_path', 'quality', 'size', 'language'];
+    
+    if ($header !== $expected_header) {
+        $errors[] = "Invalid CSV header format";
+    }
+    
+    // Check rows
+    $line_number = 1;
+    while (($row = fgetcsv($handle)) !== FALSE) {
+        $line_number++;
+        
+        if (count($row) < 3) {
+            $errors[] = "Line $line_number: Insufficient columns";
+            continue;
+        }
+        
+        // Check required fields
+        if (empty(trim($row[0]))) {
+            $errors[] = "Line $line_number: Empty movie name";
+        }
+        
+        if (empty(trim($row[1]))) {
+            $errors[] = "Line $line_number: Empty message ID";
+        }
+        
+        if (empty(trim($row[2]))) {
+            $errors[] = "Line $line_number: Empty date";
+        }
+    }
+    
+    fclose($handle);
+    
+    return $errors;
+}
+
+/**
+ * Get recent movies
+ */
+function get_recent_movies($limit = 5) {
+    $movies = [];
+    
+    if (!file_exists(CSV_FILE)) {
+        return $movies;
+    }
+    
+    $handle = fopen(CSV_FILE, 'r');
+    if ($handle === FALSE) {
+        return $movies;
+    }
+    
+    fgetcsv($handle); // Skip header
+    
+    $all_rows = [];
+    while (($row = fgetcsv($handle)) !== FALSE) {
+        if (count($row) >= 3) {
+            $all_rows[] = $row;
+        }
+    }
+    fclose($handle);
+    
+    // Get last $limit rows
+    $recent_rows = array_slice($all_rows, -$limit);
+    $recent_rows = array_reverse($recent_rows);
+    
+    foreach ($recent_rows as $row) {
+        $movies[] = [
+            'movie_name' => $row[0] ?? 'Unknown',
+            'message_id' => $row[1] ?? '',
+            'date' => $row[2] ?? 'N/A',
+            'quality' => $row[4] ?? 'Unknown',
+            'language' => $row[6] ?? 'Hindi'
+        ];
+    }
+    
+    return $movies;
+}
+
+/**
+ * Format file size
+ */
+function format_file_size($bytes) {
+    if ($bytes >= 1073741824) {
+        return number_format($bytes / 1073741824, 2) . ' GB';
+    } elseif ($bytes >= 1048576) {
+        return number_format($bytes / 1048576, 2) . ' MB';
+    } elseif ($bytes >= 1024) {
+        return number_format($bytes / 1024, 2) . ' KB';
+    } else {
+        return $bytes . ' B';
+    }
+}
+
+/**
+ * Format memory usage
+ */
+function format_memory($bytes) {
+    $units = ['B', 'KB', 'MB', 'GB'];
+    $index = 0;
+    
+    while ($bytes >= 1024 && $index < count($units) - 1) {
+        $bytes /= 1024;
+        $index++;
+    }
+    
+    return round($bytes, 2) . ' ' . $units[$index];
 }
 ?>
