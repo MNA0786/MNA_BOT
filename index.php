@@ -29,7 +29,10 @@ if (!getenv('BOT_TOKEN')) {
 // ==============================
 // Yeh sab variables Render.com ke dashboard mein set karne hain
 define('BOT_TOKEN', getenv('BOT_TOKEN'));  // Telegram bot token
-define('CHANNEL_ID', getenv('CHANNEL_ID', '-1003181705395'));  // Main movies channel
+
+// YAHI CHANGE KARNA HAI - Sirf channel ID update karo
+define('CHANNEL_ID', getenv('CHANNEL_ID', '-1003251791991'));  // NEW: Private Channel Of Movies and Webseries
+
 define('BACKUP_CHANNEL_ID', getenv('BACKUP_CHANNEL_ID', '-1002964109368'));  // Backup channel
 define('BACKUP_CHANNEL_USERNAME', getenv('BACKUP_CHANNEL_USERNAME', '@ETBackup'));  // Backup channel username
 define('ADMIN_ID', (int)getenv('ADMIN_ID', '1080317415'));  // Admin user ID
@@ -345,25 +348,26 @@ function copyMessage($chat_id, $from_chat_id, $message_id) {
 }
 
 // ==============================
-// MOVIE DELIVERY SYSTEM
+// MOVIE DELIVERY SYSTEM - IMPORTANT CHANGE
 // ==============================
 function deliver_item_to_chat($chat_id, $item) {
-    // Movie user ko deliver karta hai
+    // Movie user ko deliver karta hai - AB SIRF NEW CHANNEL SE
     
     // Agar valid message ID hai toh forward karo
     if (!empty($item['message_id']) && is_numeric($item['message_id'])) {
         // Pehle forward try karo (channel info dikhata hai)
+        // YAHI IMPORTANT CHANGE HAI - Sirf new channel se forward hoga
         $result = json_decode(forwardMessage($chat_id, CHANNEL_ID, $item['message_id']), true);
         
         if ($result && $result['ok']) {
             update_stats('total_downloads', 1);  // Statistics update
-            bot_log("Movie forwarded: {$item['movie_name']} to $chat_id");
+            bot_log("Movie forwarded from NEW CHANNEL: {$item['movie_name']} to $chat_id");
             return true;
         } else {
             // Forward nahi ho paya toh copy karo
             copyMessage($chat_id, CHANNEL_ID, $item['message_id']);
             update_stats('total_downloads', 1);
-            bot_log("Movie copied: {$item['movie_name']} to $chat_id");
+            bot_log("Movie copied from NEW CHANNEL: {$item['movie_name']} to $chat_id");
             return true;
         }
     }
@@ -374,7 +378,7 @@ function deliver_item_to_chat($chat_id, $item) {
     $text .= "💾 Size: " . ($item['size'] ?? 'Unknown') . "\n";
     $text .= "🗣️ Language: " . ($item['language'] ?? 'Hindi') . "\n";
     $text .= "📅 Date: " . ($item['date'] ?? 'N/A') . "\n";
-    $text .= "🔗 Ref: " . ($item['message_id_raw'] ?? 'N/A');
+    $text .= "🔗 Source: Private Movies Channel";
     
     sendMessage($chat_id, $text, null, 'HTML');
     return false;
@@ -3192,12 +3196,13 @@ if ($update) {
 
     get_cached_movies();
 
-    // Channel post handling
+    // Channel post handling - IMPORTANT: Ab sirf NEW CHANNEL se movies capture hongi
     if (isset($update['channel_post'])) {
         $message = $update['channel_post'];
         $message_id = $message['message_id'];
         $chat_id = $message['chat']['id'];
 
+        // YAHI CHANGE HAI - Ab sirf new channel ID se movies capture hongi
         if ($chat_id == CHANNEL_ID) {
             $text = '';
             $quality = 'Unknown';
@@ -3228,6 +3233,7 @@ if ($update) {
 
             if (!empty(trim($text))) {
                 append_movie($text, $message_id, date('d-m-Y'), '', $quality, $size, $language);
+                bot_log("New movie captured from PRIVATE CHANNEL: $text");
             }
         }
     }
