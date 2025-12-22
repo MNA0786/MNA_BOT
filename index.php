@@ -1,6 +1,6 @@
 <?php
 // ============================================================================
-// ENTERTAINMENT TADKA BOT - COMPLETE MERGED VERSION WITH AUTO-NOTIFICATION
+// ENTERTAINMENT TADKA BOT - COMPLETE MERGED VERSION v2.1.0
 // ============================================================================
 
 // ==============================
@@ -31,7 +31,7 @@ define('BACKUP_CHANNEL_USERNAME', getenv('BACKUP_CHANNEL_USERNAME', '@ETBackup')
 define('ADMIN_ID', (int)getenv('ADMIN_ID', '1080317415'));
 
 // NEW: AUTO-NOTIFICATION CONFIGURATION
-define('REQUEST_GROUP_ID', getenv('REQUEST_GROUP_ID', '-1001234567890'));  // REQUEST GROUP ID
+define('REQUEST_GROUP_ID', getenv('REQUEST_GROUP_ID', '-1001234567890'));
 define('REQUEST_CHANNEL', getenv('REQUEST_CHANNEL', '@EntertainmentTadka7860'));
 define('MAIN_CHANNEL', getenv('MAIN_CHANNEL', '@EntertainmentTadka786'));
 define('THEATER_PRINT_CHANNEL', getenv('THEATER_PRINT_CHANNEL', '@threater_print_movies'));
@@ -47,17 +47,17 @@ define('LOG_FILE', 'bot_activity.log');
 // ==============================
 // ENHANCED PAGINATION CONSTANTS
 // ==============================
-define('ITEMS_PER_PAGE', 5);                    // Har page par kitne movies
-define('MAX_PAGES_TO_SHOW', 7);                 // Max page buttons to display
-define('PAGINATION_CACHE_TIMEOUT', 60);         // Cache timeout in seconds
-define('PREVIEW_ITEMS', 3);                     // Preview mein kitne items
-define('BATCH_SIZE', 5);                        // Batch download size
-define('VIDEO_PREVIEW_ENABLED', true);          // Video preview feature
-define('MAX_VIDEO_PREVIEWS', 3);                // Max video previews per page
-define('CACHE_EXPIRY', 300);                    // 5 minutes cache
-define('MAX_SEARCH_RESULTS', 15);               // Maximum search results
-define('DAILY_REQUEST_LIMIT', 5);               // Daily movie request limit per user
-define('AUTO_BACKUP_HOUR', '03');               // Auto backup time (3 AM)
+define('ITEMS_PER_PAGE', 5);
+define('MAX_PAGES_TO_SHOW', 7);
+define('PAGINATION_CACHE_TIMEOUT', 60);
+define('PREVIEW_ITEMS', 3);
+define('BATCH_SIZE', 5);
+define('VIDEO_PREVIEW_ENABLED', true);
+define('MAX_VIDEO_PREVIEWS', 3);
+define('CACHE_EXPIRY', 300);
+define('MAX_SEARCH_RESULTS', 15);
+define('DAILY_REQUEST_LIMIT', 5);
+define('AUTO_BACKUP_HOUR', '03');
 
 // ==============================
 // MAINTENANCE MODE
@@ -72,7 +72,7 @@ $movie_messages = array();
 $movie_cache = array();
 $waiting_users = array();
 $user_sessions = array();
-$user_pagination_sessions = array();  // Pagination sessions storage
+$user_pagination_sessions = array();
 
 // ==============================
 // STEP 1: FILE INITIALIZATION FUNCTION
@@ -230,12 +230,6 @@ function copyMessage($chat_id, $from_chat_id, $message_id) {
 // STEP 4: AUTO-NOTIFICATION FUNCTION (NEW)
 // ==============================
 function send_upload_notification($movie_name, $quality, $language, $message_id) {
-    /*
-    Jab bhi koi movie channel pe upload hogi,
-    yeh function REQUEST GROUP mein notification bhejega
-    EXACT tumhare diye hue format mein
-    */
-    
     $message = "🎬 <b>NEW UPLOAD ALERT!</b>\n\n";
     $message .= "━━━━━━━━━━━━━━━━━━\n\n";
     
@@ -265,13 +259,11 @@ function send_upload_notification($movie_name, $quality, $language, $message_id)
     $message .= "🔔 <b>Aur movies/webseries ke liye request karte raho!</b> 🔥";
     
     try {
-        // REQUEST GROUP mein message send karo
         $result = sendMessage(REQUEST_GROUP_ID, $message, null, 'HTML');
         
         if ($result && isset($result['ok']) && $result['ok']) {
             bot_log("Upload notification sent to REQUEST GROUP for: $movie_name");
             
-            // Log the notification
             $notifications_file = 'upload_notifications.json';
             $notifications = [];
             
@@ -303,7 +295,6 @@ function send_upload_notification($movie_name, $quality, $language, $message_id)
 // STEP 5: UPDATED MOVIE DELIVERY SYSTEM - COPY PRIORITY
 // ==============================
 function deliver_item_to_chat($chat_id, $item) {
-    // Pehle copyMessage try karo (source visible nahi hoga)
     if (!empty($item['message_id']) && is_numeric($item['message_id'])) {
         $result = json_decode(copyMessage($chat_id, CHANNEL_ID, $item['message_id']), true);
         
@@ -312,7 +303,6 @@ function deliver_item_to_chat($chat_id, $item) {
             bot_log("Movie COPIED from CHANNEL: {$item['movie_name']} to $chat_id");
             return true;
         } else {
-            // Copy fail hua toh forward try karo
             forwardMessage($chat_id, CHANNEL_ID, $item['message_id']);
             update_stats('total_downloads', 1);
             bot_log("Movie forwarded from CHANNEL: {$item['movie_name']} to $chat_id");
@@ -320,7 +310,6 @@ function deliver_item_to_chat($chat_id, $item) {
         }
     }
 
-    // Minimal text format (no source mention)
     $text = "🎬 <b>" . ($item['movie_name'] ?? 'Unknown') . "</b>\n";
     $text .= "📊 Quality: " . ($item['quality'] ?? 'Unknown') . "\n";
     $text .= "💾 Size: " . ($item['size'] ?? 'Unknown') . "\n";
@@ -676,7 +665,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
     if ($invalid_count > 0 && ($invalid_count / $total_words) > 0.5) {
         $help_msg = "🎬 Please enter a movie name!\n\n";
         $help_msg .= "🔍 Examples of valid movie names:\n";
-        $help_msg .= "• kgf\n• pushpa\n• avengers\n• hindi movie\n• spider-man\n\n";
+        $help_msg .= "• Mandala Murders 2025\n• Lokah Chapter 1 Chandra 2025\n• Idli Kadai (2025)\n•IT - Welcome to Derry (2025) S01\n•  hindi movie\n\n";
         $help_msg .= "❌ Technical queries like 'vlc', 'audio track', etc. are not movie names.\n\n";
         $help_msg .= "📢 Join: " . MAIN_CHANNEL . "\n";
         $help_msg .= "💬 Help: " . REQUEST_CHANNEL;
@@ -1885,141 +1874,6 @@ function show_channel_info($chat_id) {
     sendMessage($chat_id, $message, $keyboard, 'HTML');
 }
 
-function show_main_channel_info($chat_id) {
-    $message = "🍿 <b>Main Channel - " . MAIN_CHANNEL . "</b>\n\n";
-    
-    $message .= "🎬 <b>What you get:</b>\n";
-    $message .= "• Latest Bollywood & Hollywood movies\n";
-    $message .= "• HD/1080p/720p quality prints\n";
-    $message .= "• Daily new uploads\n";
-    $message .= "• Multiple server links\n";
-    $message .= "• Fast direct downloads\n";
-    $message .= "• No ads, no spam\n\n";
-    
-    $message .= "📊 <b>Current Stats:</b>\n";
-    $stats = get_stats();
-    $message .= "• Total Movies: " . ($stats['total_movies'] ?? 0) . "\n";
-    $message .= "• Active Users: " . get_active_users_count() . "\n";
-    $message .= "• Daily Uploads: " . get_daily_uploads_count() . "\n\n";
-    
-    $message .= "🔔 <b>Join now for latest movies!</b>";
-
-    $keyboard = [
-        'inline_keyboard' => [
-            [
-                ['text' => '🍿 Join Main Channel', 'url' => 'https://t.me/EntertainmentTadka786'],
-                ['text' => '📥 Request Movies', 'url' => 'https://t.me/EntertainmentTadka7860']
-            ]
-        ]
-    ];
-    
-    sendMessage($chat_id, $message, $keyboard, 'HTML');
-}
-
-function show_request_channel_info($chat_id) {
-    $message = "📥 <b>Requests Channel - " . REQUEST_CHANNEL . "</b>\n\n";
-    
-    $message .= "🎯 <b>How to request movies:</b>\n";
-    $message .= "1. Join this channel first\n";
-    $message .= "2. Use <code>/request movie_name</code> in bot\n";
-    $message .= "3. Or post directly in channel\n";
-    $message .= "4. We'll add within 24 hours\n\n";
-    
-    $message .= "📝 <b>Also available:</b>\n";
-    $message .= "• Bug reports & issues\n";
-    $message .= "• Feature suggestions\n";
-    $message .= "• General support\n";
-    $message .= "• Bot help & guidance\n\n";
-    
-    $message .= "⚠️ <b>Please check these before requesting:</b>\n";
-    $message .= "• Search in bot first\n";
-    $message .= "• Check spelling\n";
-    $message .= "• Use correct movie name\n";
-    $message .= "• Be patient for uploads\n\n";
-    
-    $message .= "🚀 <b>We fulfill most requests within 24 hours!</b>";
-
-    $keyboard = [
-        'inline_keyboard' => [
-            [
-                ['text' => '📥 Join Requests Channel', 'url' => 'https://t.me/EntertainmentTadka7860'],
-                ['text' => '🎬 Request via Bot', 'callback_data' => 'request_help']
-            ]
-        ]
-    ];
-    
-    sendMessage($chat_id, $message, $keyboard, 'HTML');
-}
-
-function show_backup_channel_info($chat_id) {
-    $message = "🔒 <b>Backup Channel - " . BACKUP_CHANNEL_USERNAME . "</b>\n\n";
-    
-    $message .= "🛡️ <b>Purpose:</b>\n";
-    $message .= "• Secure data backups\n";
-    $message .= "• Database protection\n";
-    $message .= "• System recovery\n";
-    $message .= "• Disaster prevention\n\n";
-    
-    $message .= "💾 <b>What's backed up:</b>\n";
-    $message .= "• Movies database (" . get_csv_count() . " movies)\n";
-    $message .= "• Users data (" . get_users_count() . " users)\n";
-    $message .= "• Bot statistics\n";
-    $message .= "• Request history\n";
-    $message .= "• Complete system archives\n\n";
-    
-    $message .= "⏰ <b>Backup Schedule:</b>\n";
-    $message .= "• Automatic: Daily at " . AUTO_BACKUP_HOUR . ":00\n";
-    $message .= "• Manual: On admin command\n";
-    $message .= "• Retention: Last 7 backups\n\n";
-    
-    $message .= "🔐 <b>Note:</b> This is a private channel for admin use only.";
-
-    $keyboard = [
-        'inline_keyboard' => [
-            [
-                ['text' => '🔒 ' . BACKUP_CHANNEL_USERNAME, 'url' => 'https://t.me/ETBackup'],
-                ['text' => '📊 Backup Status', 'callback_data' => 'backup_status']
-            ]
-        ]
-    ];
-    
-    if ($chat_id == ADMIN_ID) {
-        sendMessage($chat_id, $message, $keyboard, 'HTML');
-    } else {
-        sendMessage($chat_id, "🔒 <b>Backup Channel</b>\n\nThis is a private admin-only channel for data protection.", null, 'HTML');
-    }
-}
-
-function show_theater_print_channel_info($chat_id) {
-    $message = "🎭 <b>Theater Print Channel - " . THEATER_PRINT_CHANNEL . "</b>\n\n";
-    
-    $message .= "🎬 <b>What you get:</b>\n";
-    $message .= "• Theater quality prints\n";
-    $message .= "• Early movie releases\n";
-    $message .= "• Exclusive content\n";
-    $message .= "• HD/4K quality\n";
-    $message .= "• Fast downloads\n\n";
-    
-    $message .= "📥 <b>How to access:</b>\n";
-    $message .= "1. Join the channel\n";
-    $message .= "2. Search movies via bot\n";
-    $message .= "3. Download directly\n\n";
-    
-    $message .= "🔔 <b>New Feature:</b>\n";
-    $message .= "Request group gets notified when new movies are uploaded!";
-
-    $keyboard = [
-        'inline_keyboard' => [
-            [
-                ['text' => '🎭 Join Theater Prints', 'url' => 'https://t.me/threater_print_movies'],
-                ['text' => '🍿 Main Channel', 'url' => 'https://t.me/EntertainmentTadka786']
-            ]
-        ]
-    ];
-    
-    sendMessage($chat_id, $message, $keyboard, 'HTML');
-}
-
 // ==============================
 // STEP 22: HELPER FUNCTIONS FOR CHANNEL INFO
 // ==============================
@@ -2898,7 +2752,7 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
             $welcome .= "• Use English or Hindi\n";
             $welcome .= "• Partial names also work\n\n";
             $welcome .= "🔍 <b>Examples:</b>\n";
-            $welcome .= "• kgf\n• pushpa\n• avengers\n• hindi movie\n• spider-man\n\n";
+            $welcome .= "• Mandala Murders 2025\n• Lokah Chapter 1 Chandra 2025\n• Idli Kadai (2025)\n•IT - Welcome to Derry (2025) S01\n•  hindi movie\n\n";
             $welcome .= "❌ <b>Don't type:</b>\n";
             $welcome .= "• Technical questions\n";
             $welcome .= "• Player instructions\n";
@@ -3006,7 +2860,7 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
         case '/find':
             $movie_name = implode(' ', $params);
             if (empty($movie_name)) {
-                sendMessage($chat_id, "❌ Usage: <code>/search movie_name</code>\nExample: <code>/search kgf 2</code>", null, 'HTML');
+                sendMessage($chat_id, "❌ Usage: <code>/search movie_name</code>\nExample: <code>/search Mandala Murders 2025 2</code>", null, 'HTML');
                 return;
             }
             $lang = detect_language($movie_name);
@@ -3392,13 +3246,11 @@ if ($update) {
             $cnt = 0;
             
             foreach ($entries as $entry) {
-                // Silent delivery using COPY priority
                 deliver_item_to_chat($chat_id, $entry);
                 usleep(150000);
                 $cnt++;
             }
             
-            // Minimal confirmation
             answerCallbackQuery($query['id'], "✅ " . $cnt . " movies sent");
             update_user_activity($user_id, 'download');
         }
@@ -3502,7 +3354,7 @@ if ($update) {
             }
         }
         elseif ($data === 'request_movie') {
-            sendMessage($chat_id, "📝 To request a movie, use:\n<code>/request movie_name</code>\n\nExample: <code>/request Avengers Endgame</code>", null, 'HTML');
+            sendMessage($chat_id, "📝 To request a movie, use:\n<code>/request movie_name</code>\n\nExample: <code>/request Idli Kadai (2025) Endgame</code>", null, 'HTML');
             answerCallbackQuery($query['id'], "Request instructions sent");
         }
         elseif ($data === 'my_stats') {
@@ -3536,7 +3388,6 @@ if ($update) {
             answerCallbackQuery($query['id'], "Help menu");
         }
         elseif ($data === 'test_notification') {
-            // Test the auto-notification system
             if ($chat_id == ADMIN_ID) {
                 $test_result = send_upload_notification(
                     "Test Movie (2024)",
@@ -3590,12 +3441,10 @@ function send_test_notification($chat_id, $test_type = 'basic') {
     $server_time = $timestamp;
     $server_timezone = date_default_timezone_get();
     
-    // Create test message based on type
     $notification = "";
     
     switch ($test_type) {
         case 'notification':
-            // Test auto-notification system
             $test_result = send_upload_notification(
                 "Test Movie (2024)",
                 "1080p",
@@ -3675,7 +3524,7 @@ function send_test_notification($chat_id, $test_type = 'basic') {
             $notification .= "✅ <b>All channels properly configured!</b>";
             break;
             
-        default: // basic
+        default:
             $stats = get_stats();
             $users_data = json_decode(file_get_contents(USERS_FILE), true);
             
@@ -3704,7 +3553,6 @@ function send_test_notification($chat_id, $test_type = 'basic') {
             break;
     }
     
-    // Send notification
     sendMessage($chat_id, $notification, null, 'HTML');
     bot_log("Test notification sent - Type: $test_type");
 }
@@ -3755,97 +3603,422 @@ function format_memory($bytes) {
 }
 
 // ==============================
-// STEP 32: DEFAULT PAGE
+// STEP 32: DEFAULT PAGE (WEB INTERFACE)
 // ==============================
 if (!isset($update) || !$update) {
     $stats = get_stats();
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     
-    echo "<h1>🎬 Entertainment Tadka Bot</h1>";
-    echo "<p><strong>Version:</strong> 2.1.0 (With Auto-Notification)</p>";
-    echo "<p><strong>Telegram Channel:</strong> " . MAIN_CHANNEL . "</p>";
-    echo "<p><strong>Request Channel:</strong> " . REQUEST_CHANNEL . "</p>";
-    echo "<p><strong>Theater Prints:</strong> " . THEATER_PRINT_CHANNEL . "</p>";
-    echo "<p><strong>Backup Channel:</strong> " . BACKUP_CHANNEL_USERNAME . "</p>";
-    echo "<p><strong>Status:</strong> ✅ Running</p>";
-    echo "<p><strong>Total Movies:</strong> " . ($stats['total_movies'] ?? 0) . "</p>";
-    echo "<p><strong>Total Users:</strong> " . count($users_data['users'] ?? []) . "</p>";
-    echo "<p><strong>Total Searches:</strong> " . ($stats['total_searches'] ?? 0) . "</p>";
-    echo "<p><strong>Last Updated:</strong> " . ($stats['last_updated'] ?? 'N/A') . "</p>";
-    
-    echo "<h3>🚀 New Features</h3>";
-    echo "<ul>";
-    echo "<li>✅ Auto-Notification to Request Group</li>";
-    echo "<li>✅ Exact notification format as requested</li>";
-    echo "<li>✅ Theater Print Channel integration</li>";
-    echo "<li>✅ Enhanced movie delivery system</li>";
-    echo "<li>✅ Complete user management</li>";
-    echo "<li>✅ Points system & leaderboard</li>";
-    echo "<li>✅ Advanced pagination</li>";
-    echo "<li>✅ Auto-backup system</li>";
-    echo "</ul>";
-    
-    echo "<h3>🔔 Auto-Notification System</h3>";
-    echo "<p><strong>How it works:</strong></p>";
-    echo "<ol>";
-    echo "<li>Movie uploaded to channel (" . CHANNEL_ID . ")</li>";
-    echo "<li>Bot automatically captures movie details</li>";
-    echo "<li>Bot sends notification to request group (" . REQUEST_GROUP_ID . ")</li>";
-    echo "<li>Notification uses exact requested format</li>";
-    echo "<li>Users can search movies immediately</li>";
-    echo "</ol>";
-    
-    echo "<h3>📱 Notification Preview</h3>";
-    echo "<pre>";
-    echo "🎬 NEW UPLOAD ALERT!\n\n";
-    echo "━━━━━━━━━━━━━━━━━━\n\n";
-    echo "✅ Movie / Webseries Add Ho Gayi Hai: \n\n";
-    echo "• Name: Test Movie\n\n";
-    echo "━━━━━━━━━━━━━━━━━━\n\n";
-    echo "📥 Abhi Available Hai: • Bot se search karo: Test Movie\n\n";
-    echo "━━━━━━━━━━━━━━━━━━\n\n";
-    echo "🎯 Bot Use Karne Ka Tarika: \n";
-    echo "• Search ke liye: /search Test Movie\n\n";
-    echo "• Sab uploads dekhne ke liye: /totalupload (Sirf Admin Ke liye)\n\n";
-    echo "━━━━━━━━━━━━━━━━━━\n\n";
-    echo "📢 Join Our Channels:\n\n";
-    echo "🍿 Main: @EntertainmentTadka786\n  \n";
-    echo "📥 Requests: @EntertainmentTadka7860\n\n";
-    echo "🎭 Theater Print Channel: @threater_print_movies\n\n";
-    echo "🔒 Backup: @ETBackup\n\n";
-    echo "━━━━━━━━━━━━━━━━━━\n\n";
-    echo "🔔 Aur movies/webseries ke liye request karte raho! 🔥";
-    echo "</pre>";
-    
-    echo "<h3>🚀 Quick Setup</h3>";
-    echo "<p><a href='?setwebhook=1'>Set Webhook Now</a></p>";
-    echo "<p><a href='?test_notification=1'>Test Auto-Notification</a></p>";
-    echo "<p><a href='?test_save=1'>Test Movie Save</a></p>";
-    echo "<p><a href='?check_csv=1'>Check CSV Data</a></p>";
-    
-    echo "<h3>📋 Available Commands</h3>";
-    echo "<ul>";
-    echo "<li><code>/start</code> - Welcome message</li>";
-    echo "<li><code>/help</code> - All commands</li>";
-    echo "<li><code>/search movie</code> - Search movies</li>";
-    echo "<li><code>/browse</code> - Enhanced pagination</li>";
-    echo "<li><code>/request movie</code> - Request movie</li>";
-    echo "<li><code>/mystats</code> - User statistics</li>";
-    echo "<li><code>/leaderboard</code> - Top users</li>";
-    echo "<li><code>/channel</code> - Join channels</li>";
-    echo "<li><code>/stats</code> - Admin statistics</li>";
-    echo "<li><code>/test notification</code> - Test auto-notification</li>";
-    echo "</ul>";
+    echo "<!DOCTYPE html>
+    <html lang='en'>
+    <head>
+        <meta charset='UTF-8'>
+        <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+        <title>🎬 Entertainment Tadka Bot v2.1</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+                font-family: 'Segoe UI', Arial, sans-serif;
+            }
+            
+            body {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                padding: 20px;
+            }
+            
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+                background: white;
+                border-radius: 20px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                overflow: hidden;
+            }
+            
+            .header {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 40px;
+                text-align: center;
+            }
+            
+            .header h1 {
+                font-size: 2.8rem;
+                margin-bottom: 10px;
+            }
+            
+            .header .subtitle {
+                font-size: 1.2rem;
+                opacity: 0.9;
+                margin-bottom: 20px;
+            }
+            
+            .stats-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                gap: 20px;
+                padding: 30px;
+            }
+            
+            .stat-card {
+                background: #f8f9fa;
+                border-radius: 15px;
+                padding: 25px;
+                text-align: center;
+                border: 2px solid #e9ecef;
+                transition: all 0.3s ease;
+            }
+            
+            .stat-card:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+                border-color: #667eea;
+            }
+            
+            .stat-icon {
+                font-size: 3rem;
+                margin-bottom: 15px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+            }
+            
+            .stat-value {
+                font-size: 2.5rem;
+                font-weight: bold;
+                color: #333;
+                margin-bottom: 5px;
+            }
+            
+            .stat-label {
+                color: #666;
+                font-size: 1rem;
+            }
+            
+            .features-section {
+                background: #f1f3f5;
+                padding: 40px;
+            }
+            
+            .features-section h2 {
+                color: #333;
+                text-align: center;
+                margin-bottom: 30px;
+                font-size: 2rem;
+            }
+            
+            .features-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                gap: 20px;
+            }
+            
+            .feature-card {
+                background: white;
+                padding: 25px;
+                border-radius: 15px;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+            }
+            
+            .feature-card h3 {
+                color: #667eea;
+                margin-bottom: 15px;
+                font-size: 1.3rem;
+            }
+            
+            .feature-card ul {
+                list-style: none;
+                padding-left: 0;
+            }
+            
+            .feature-card li {
+                padding: 8px 0;
+                border-bottom: 1px solid #eee;
+                color: #555;
+            }
+            
+            .feature-card li:before {
+                content: '✓';
+                color: #4CAF50;
+                margin-right: 10px;
+                font-weight: bold;
+            }
+            
+            .actions-section {
+                padding: 40px;
+                text-align: center;
+            }
+            
+            .actions-section h2 {
+                color: #333;
+                margin-bottom: 30px;
+                font-size: 2rem;
+            }
+            
+            .action-buttons {
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 15px;
+                margin-bottom: 30px;
+            }
+            
+            .btn {
+                display: inline-block;
+                padding: 15px 30px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                text-decoration: none;
+                border-radius: 10px;
+                font-weight: bold;
+                transition: all 0.3s ease;
+                border: none;
+                cursor: pointer;
+                font-size: 1rem;
+            }
+            
+            .btn:hover {
+                transform: translateY(-3px);
+                box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+            }
+            
+            .btn-secondary {
+                background: #6c757d;
+            }
+            
+            .btn-success {
+                background: #28a745;
+            }
+            
+            .btn-warning {
+                background: #ffc107;
+                color: #333;
+            }
+            
+            .log-section {
+                background: #f8f9fa;
+                padding: 30px;
+                border-radius: 15px;
+                margin: 20px;
+            }
+            
+            .log-section h3 {
+                color: #333;
+                margin-bottom: 20px;
+            }
+            
+            .log-content {
+                background: white;
+                padding: 20px;
+                border-radius: 10px;
+                font-family: monospace;
+                font-size: 0.9rem;
+                max-height: 300px;
+                overflow-y: auto;
+                border: 1px solid #ddd;
+            }
+            
+            .footer {
+                background: #343a40;
+                color: white;
+                padding: 30px;
+                text-align: center;
+                border-top: 1px solid #495057;
+            }
+            
+            .channel-links {
+                display: flex;
+                justify-content: center;
+                flex-wrap: wrap;
+                gap: 15px;
+                margin: 20px 0;
+            }
+            
+            .channel-link {
+                display: inline-block;
+                padding: 10px 20px;
+                background: rgba(255,255,255,0.1);
+                color: white;
+                text-decoration: none;
+                border-radius: 8px;
+                transition: all 0.3s ease;
+            }
+            
+            .channel-link:hover {
+                background: rgba(255,255,255,0.2);
+                transform: translateY(-2px);
+            }
+            
+            @media (max-width: 768px) {
+                .header h1 {
+                    font-size: 2rem;
+                }
+                
+                .stats-grid {
+                    grid-template-columns: 1fr;
+                }
+                
+                .features-grid {
+                    grid-template-columns: 1fr;
+                }
+                
+                .action-buttons {
+                    flex-direction: column;
+                }
+                
+                .btn {
+                    width: 100%;
+                    margin-bottom: 10px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class='container'>
+            <div class='header'>
+                <h1>🎬 Entertainment Tadka Bot</h1>
+                <div class='subtitle'>Version 2.1.0 (With Auto-Notification)</div>
+                <div class='channel-links'>
+                    <a href='https://t.me/EntertainmentTadka786' class='channel-link' target='_blank'>🍿 Main Channel</a>
+                    <a href='https://t.me/EntertainmentTadka7860' class='channel-link' target='_blank'>📥 Requests</a>
+                    <a href='https://t.me/threater_print_movies' class='channel-link' target='_blank'>🎭 Theater Prints</a>
+                    <a href='https://t.me/ETBackup' class='channel-link' target='_blank'>🔒 Backup</a>
+                </div>
+            </div>
+            
+            <div class='stats-grid'>
+                <div class='stat-card'>
+                    <div class='stat-icon'>🎬</div>
+                    <div class='stat-value'>" . ($stats['total_movies'] ?? 0) . "</div>
+                    <div class='stat-label'>Total Movies</div>
+                </div>
+                
+                <div class='stat-card'>
+                    <div class='stat-icon'>👥</div>
+                    <div class='stat-value'>" . count($users_data['users'] ?? []) . "</div>
+                    <div class='stat-label'>Total Users</div>
+                </div>
+                
+                <div class='stat-card'>
+                    <div class='stat-icon'>🔍</div>
+                    <div class='stat-value'>" . ($stats['total_searches'] ?? 0) . "</div>
+                    <div class='stat-label'>Total Searches</div>
+                </div>
+                
+                <div class='stat-card'>
+                    <div class='stat-icon'>📥</div>
+                    <div class='stat-value'>" . ($stats['total_downloads'] ?? 0) . "</div>
+                    <div class='stat-label'>Total Downloads</div>
+                </div>
+            </div>
+            
+            <div class='features-section'>
+                <h2>🚀 New Features in v2.1.0</h2>
+                <div class='features-grid'>
+                    <div class='feature-card'>
+                        <h3>🔔 Auto-Notification System</h3>
+                        <ul>
+                            <li>Request group gets automatic alerts</li>
+                            <li>Exact format as requested</li>
+                            <li>Instant movie availability updates</li>
+                            <li>Real-time notification delivery</li>
+                        </ul>
+                    </div>
+                    
+                    <div class='feature-card'>
+                        <h3>🎬 Enhanced Movie Delivery</h3>
+                        <ul>
+                            <li>Copy message (no source visible)</li>
+                            <li>Priority forwarding system</li>
+                            <li>Batch download with progress</li>
+                            <li>Video preview system</li>
+                        </ul>
+                    </div>
+                    
+                    <div class='feature-card'>
+                        <h3>💾 Complete Backup System</h3>
+                        <ul>
+                            <li>Daily auto-backup at 3 AM</li>
+                            <li>Telegram channel backup</li>
+                            <li>Zip archive creation</li>
+                            <li>Automatic cleanup (last 7 backups)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <div class='actions-section'>
+                <h2>⚡ Quick Actions</h2>
+                <div class='action-buttons'>
+                    <a href='?setwebhook=1' class='btn'>🔄 Set Webhook</a>
+                    <a href='?test_notification=1' class='btn btn-success'>🔔 Test Auto-Notification</a>
+                    <a href='?test_save=1' class='btn btn-warning'>💾 Test Movie Save</a>
+                    <a href='?check_csv=1' class='btn btn-secondary'>📊 Check CSV Data</a>
+                    <a href='?test=full' class='btn'>🔧 Full System Test</a>
+                </div>
+                
+                <div class='action-buttons'>
+                    <a href='?backup=1' class='btn'>💾 Manual Backup</a>
+                    <a href='?cleanup=1' class='btn btn-warning'>🧹 Cleanup System</a>
+                    <a href='?stats=1' class='btn btn-secondary'>📈 View Statistics</a>
+                </div>
+            </div>
+            
+            <div class='log-section'>
+                <h3>📊 Recent Activity Logs</h3>
+                <div class='log-content'>";
     
     if (file_exists(LOG_FILE)) {
-        $logs = array_slice(file(LOG_FILE), -10);
-        echo "<h3>📊 Recent Activity</h3>";
-        echo "<pre>";
+        $logs = array_slice(file(LOG_FILE), -20);
         foreach ($logs as $log) {
-            echo htmlspecialchars($log);
+            echo htmlspecialchars($log) . "<br>";
         }
-        echo "</pre>";
+    } else {
+        echo "No logs found. Bot is ready!";
     }
+    
+    echo "        </div>
+            </div>
+            
+            <div class='footer'>
+                <p>🤖 <b>Entertainment Tadka Bot v2.1.0</b></p>
+                <p>👨‍💻 Developer: @EntertainmentTadka0786</p>
+                <p>⏰ Last Updated: " . date('Y-m-d H:i:s') . "</p>
+                <p>📡 Status: <span style='color:#4CAF50;'>✅ Online</span></p>
+                <p>💡 Need help? Join: <a href='https://t.me/EntertainmentTadka7860' style='color:#667eea;'>@EntertainmentTadka7860</a></p>
+            </div>
+        </div>
+        
+        <script>
+            // Auto-refresh logs every 30 seconds
+            setInterval(function() {
+                location.reload();
+            }, 30000);
+            
+            // Copy to clipboard function
+            function copyToClipboard(text) {
+                navigator.clipboard.writeText(text).then(function() {
+                    alert('Copied to clipboard!');
+                });
+            }
+            
+            // Test notification button
+            document.querySelectorAll('.btn').forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    if(this.href.includes('test_notification')) {
+                        e.preventDefault();
+                        if(confirm('This will send a test notification to your request group. Continue?')) {
+                            window.location.href = this.href;
+                        }
+                    }
+                });
+            });
+        </script>
+    </body>
+    </html>";
 }
 
 // ==============================
@@ -3868,63 +4041,71 @@ if (isset($_GET['test_save'])) {
     manual_save_to_csv("Metro In Dino 2025 WebRip 480p", 1925, "480p", "Hindi");
     manual_save_to_csv("Metro In Dino (2025) Hindi 720p", 1926, "720p", "Hindi");
     manual_save_to_csv("Animal (2023) Hindi 1080p", 1927, "1080p", "Hindi");
-    manual_save_to_csv("Avengers Endgame (2019) English", 1928, "1080p", "English");
+    manual_save_to_csv("Idli Kadai (2025) Endgame (2019) English", 1928, "1080p", "English");
     
-    echo "✅ All 5 movies manually save ho gayi!<br>";
-    echo "📊 <a href='?check_csv=1'>Check CSV</a> | ";
-    echo "<a href='?setwebhook=1'>Reset Webhook</a> | ";
-    echo "<a href='?test_stats=1'>Test Stats</a>";
+    echo "<script>alert('✅ All 5 movies manually save ho gayi!'); window.location.href = '?';</script>";
     exit;
 }
 
 if (isset($_GET['check_csv'])) {
-    echo "<h3>CSV Content:</h3>";
+    echo "<h3>CSV Content:</h3><pre>";
     if (file_exists(CSV_FILE)) {
         $lines = file(CSV_FILE);
         foreach ($lines as $line) {
-            echo htmlspecialchars($line) . "<br>";
+            echo htmlspecialchars($line);
         }
     } else {
         echo "❌ CSV file not found!";
     }
+    echo "</pre><a href='?' style='display:inline-block; padding:10px 20px; background:#667eea; color:white; text-decoration:none; border-radius:5px;'>← Back</a>";
     exit;
 }
 
 if (isset($_GET['setwebhook'])) {
     $webhook_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]";
+    $webhook_url = str_replace('?setwebhook=1', '', $webhook_url);
     $result = apiRequest('setWebhook', ['url' => $webhook_url]);
     
-    echo "<h1>Webhook Setup</h1>";
-    echo "<p>Result: " . htmlspecialchars($result) . "</p>";
-    echo "<p>Webhook URL: " . htmlspecialchars($webhook_url) . "</p>";
+    echo "<div style='max-width:800px; margin:50px auto; padding:30px; background:white; border-radius:15px; box-shadow:0 10px 30px rgba(0,0,0,0.1);'>
+            <h1 style='color:#667eea;'>Webhook Setup</h1>
+            <div style='background:#f8f9fa; padding:20px; border-radius:10px; margin:20px 0;'>
+                <h3>Result:</h3>
+                <pre>" . htmlspecialchars($result) . "</pre>
+            </div>
+            <p><strong>Webhook URL:</strong> " . htmlspecialchars($webhook_url) . "</p>";
     
     $bot_info = json_decode(apiRequest('getMe'), true);
     if ($bot_info && isset($bot_info['ok']) && $bot_info['ok']) {
-        echo "<h2>Bot Info</h2>";
-        echo "<p>Name: " . htmlspecialchars($bot_info['result']['first_name']) . "</p>";
-        echo "<p>Username: @" . htmlspecialchars($bot_info['result']['username']) . "</p>";
-        echo "<p>Channel: " . MAIN_CHANNEL . "</p>";
-        echo "<p>Request Channel: " . REQUEST_CHANNEL . "</p>";
-        echo "<p>Theater Print: " . THEATER_PRINT_CHANNEL . "</p>";
-        echo "<p>Backup Channel: " . BACKUP_CHANNEL_USERNAME . "</p>";
+        echo "<div style='background:#e3f2fd; padding:20px; border-radius:10px; margin:20px 0;'>
+                <h3>Bot Information</h3>
+                <p><strong>Name:</strong> " . htmlspecialchars($bot_info['result']['first_name']) . "</p>
+                <p><strong>Username:</strong> @" . htmlspecialchars($bot_info['result']['username']) . "</p>
+                <p><strong>ID:</strong> " . htmlspecialchars($bot_info['result']['id']) . "</p>
+            </div>";
     }
     
-    echo "<h3>System Status</h3>";
-    echo "<p>CSV File: " . (file_exists(CSV_FILE) ? "✅ Exists" : "❌ Missing") . "</p>";
-    echo "<p>Users File: " . (file_exists(USERS_FILE) ? "✅ Exists" : "❌ Missing") . "</p>";
-    echo "<p>Stats File: " . (file_exists(STATS_FILE) ? "✅ Exists" : "❌ Missing") . "</p>";
-    echo "<p>Backup Directory: " . (file_exists(BACKUP_DIR) ? "✅ Exists" : "❌ Missing") . "</p>";
-    
-    echo "<h3>Auto-Notification Configuration</h3>";
-    echo "<p>Request Group ID: " . REQUEST_GROUP_ID . "</p>";
-    echo "<p>Private Channel ID: " . CHANNEL_ID . "</p>";
-    echo "<p>Admin ID: " . ADMIN_ID . "</p>";
-    
+    echo "<div style='background:#f1f8e9; padding:20px; border-radius:10px; margin:20px 0;'>
+            <h3>System Status</h3>
+            <p>CSV File: " . (file_exists(CSV_FILE) ? "✅ <span style='color:green;'>Exists</span>" : "❌ <span style='color:red;'>Missing</span>") . "</p>
+            <p>Users File: " . (file_exists(USERS_FILE) ? "✅ <span style='color:green;'>Exists</span>" : "❌ <span style='color:red;'>Missing</span>") . "</p>
+            <p>Stats File: " . (file_exists(STATS_FILE) ? "✅ <span style='color:green;'>Exists</span>" : "❌ <span style='color:red;'>Missing</span>") . "</p>
+            <p>Backup Directory: " . (file_exists(BACKUP_DIR) ? "✅ <span style='color:green;'>Exists</span>" : "❌ <span style='color:red;'>Missing</span>") . "</p>
+        </div>
+        
+        <div style='background:#fff3e0; padding:20px; border-radius:10px; margin:20px 0;'>
+            <h3>Auto-Notification Configuration</h3>
+            <p><strong>Request Group ID:</strong> " . REQUEST_GROUP_ID . "</p>
+            <p><strong>Private Channel ID:</strong> " . CHANNEL_ID . "</p>
+            <p><strong>Admin ID:</strong> " . ADMIN_ID . "</p>
+            <p><strong>Status:</strong> " . (defined('REQUEST_GROUP_ID') && REQUEST_GROUP_ID ? "✅ <span style='color:green;'>Configured</span>" : "❌ <span style='color:red;'>Not Configured</span>") . "</p>
+        </div>
+        
+        <a href='?' style='display:inline-block; padding:10px 20px; background:#667eea; color:white; text-decoration:none; border-radius:5px; margin-top:20px;'>← Back to Dashboard</a>
+    </div>";
     exit;
 }
 
 if (isset($_GET['test_notification'])) {
-    // Test auto-notification system
     $test_result = send_upload_notification(
         "Test Movie (2024)",
         "1080p",
@@ -3933,41 +4114,103 @@ if (isset($_GET['test_notification'])) {
     );
     
     if ($test_result) {
-        echo "<h2>✅ Test Notification Sent!</h2>";
-        echo "<p>Check your request group for the test notification.</p>";
-        echo "<p>Format exactly as requested:</p>";
-        echo "<pre>";
-        echo "🎬 NEW UPLOAD ALERT!\n\n";
-        echo "━━━━━━━━━━━━━━━━━━\n\n";
-        echo "✅ Movie / Webseries Add Ho Gayi Hai: \n\n";
-        echo "• Name: Test Movie (2024)\n\n";
-        echo "━━━━━━━━━━━━━━━━━━\n\n";
-        echo "📥 Abhi Available Hai: • Bot se search karo: Test Movie (2024)\n\n";
-        echo "━━━━━━━━━━━━━━━━━━\n\n";
-        echo "🎯 Bot Use Karne Ka Tarika: \n";
-        echo "• Search ke liye: /search Test Movie (2024)\n\n";
-        echo "• Sab uploads dekhne ke liye: /totalupload (Sirf Admin Ke liye)\n\n";
-        echo "━━━━━━━━━━━━━━━━━━\n\n";
-        echo "📢 Join Our Channels:\n\n";
-        echo "🍿 Main: " . MAIN_CHANNEL . "\n  \n";
-        echo "📥 Requests: " . REQUEST_CHANNEL . "\n\n";
-        echo "🎭 Theater Print Channel: " . THEATER_PRINT_CHANNEL . "\n\n";
-        echo "🔒 Backup: " . BACKUP_CHANNEL_USERNAME . "\n\n";
-        echo "━━━━━━━━━━━━━━━━━━\n\n";
-        echo "🔔 Aur movies/webseries ke liye request karte raho! 🔥";
-        echo "</pre>";
+        echo "<div style='max-width:800px; margin:50px auto; padding:30px; background:#e8f5e9; border-radius:15px; box-shadow:0 10px 30px rgba(0,0,0,0.1); text-align:center;'>
+                <h1 style='color:#4CAF50;'>✅ Test Notification Sent!</h1>
+                <p style='font-size:1.2rem; margin:20px 0;'>Check your request group for the test notification.</p>
+                
+                <div style='background:white; padding:20px; border-radius:10px; margin:30px 0; text-align:left;'>
+                    <h3 style='color:#667eea;'>Notification Preview:</h3>
+                    <pre style='background:#f8f9fa; padding:15px; border-radius:5px; overflow:auto;'>
+🎬 <b>NEW UPLOAD ALERT!</b>
+
+━━━━━━━━━━━━━━━━━━
+
+✅ <b>Movie / Webseries Add Ho Gayi Hai:</b> 
+
+• <b>Name:</b> Test Movie (2024)
+
+━━━━━━━━━━━━━━━━━━
+
+📥 <b>Abhi Available Hai:</b> • Bot se search karo: <code>Test Movie (2024)</code>
+
+━━━━━━━━━━━━━━━━━━
+
+🎯 <b>Bot Use Karne Ka Tarika:</b> 
+• Search ke liye: <code>/search Test Movie (2024)</code>
+
+• Sab uploads dekhne ke liye: <code>/totalupload</code> (Sirf Admin Ke liye)
+
+━━━━━━━━━━━━━━━━━━
+
+📢 <b>Join Our Channels:</b>
+
+🍿 Main: " . MAIN_CHANNEL . "
+  
+📥 Requests: " . REQUEST_CHANNEL . "
+
+🎭 Theater Print Channel: " . THEATER_PRINT_CHANNEL . "
+
+🔒 Backup: " . BACKUP_CHANNEL_USERNAME . "
+
+━━━━━━━━━━━━━━━━━━
+
+🔔 <b>Aur movies/webseries ke liye request karte raho!</b> 🔥
+                    </pre>
+                </div>
+                
+                <p><strong>Sent to:</strong> REQUEST_GROUP_ID (" . REQUEST_GROUP_ID . ")</p>
+                <p><strong>Time:</strong> " . date('Y-m-d H:i:s') . "</p>
+                
+                <a href='?' style='display:inline-block; padding:10px 20px; background:#667eea; color:white; text-decoration:none; border-radius:5px; margin-top:20px;'>← Back to Dashboard</a>
+            </div>";
     } else {
-        echo "<h2>❌ Test Failed</h2>";
-        echo "<p>Could not send test notification.</p>";
-        echo "<p>Make sure:</p>";
-        echo "<ol>";
-        echo "<li>Bot is added to request group</li>";
-        echo "<li>REQUEST_GROUP_ID is correct in environment variables</li>";
-        echo "<li>Bot has permission to send messages in group</li>";
-        echo "</ol>";
+        echo "<div style='max-width:800px; margin:50px auto; padding:30px; background:#ffebee; border-radius:15px; box-shadow:0 10px 30px rgba(0,0,0,0.1); text-align:center;'>
+                <h1 style='color:#f44336;'>❌ Test Failed</h1>
+                <p style='font-size:1.2rem; margin:20px 0;'>Could not send test notification.</p>
+                
+                <div style='background:white; padding:20px; border-radius:10px; margin:30px 0; text-align:left;'>
+                    <h3 style='color:#667eea;'>Troubleshooting Steps:</h3>
+                    <ol style='margin-left:20px;'>
+                        <li>Bot is added to request group</li>
+                        <li>REQUEST_GROUP_ID is correct in environment variables</li>
+                        <li>Bot has permission to send messages in group</li>
+                        <li>Check bot_activity.log for detailed errors</li>
+                    </ol>
+                </div>
+                
+                <a href='?' style='display:inline-block; padding:10px 20px; background:#667eea; color:white; text-decoration:none; border-radius:5px; margin-top:20px;'>← Back to Dashboard</a>
+            </div>";
     }
-    
-    echo "<p><a href='?'>Back to main page</a></p>";
     exit;
 }
+
+// Handle other GET parameters
+if (isset($_GET['backup'])) {
+    manual_backup(ADMIN_ID);
+    echo "<script>alert('Backup started! Check bot logs for details.'); window.location.href = '?';</script>";
+    exit;
+}
+
+if (isset($_GET['cleanup'])) {
+    perform_cleanup(ADMIN_ID);
+    echo "<script>alert('Cleanup completed!'); window.location.href = '?';</script>";
+    exit;
+}
+
+if (isset($_GET['stats'])) {
+    admin_stats(ADMIN_ID);
+    exit;
+}
+
+if (isset($_GET['test'])) {
+    $test_type = $_GET['test'];
+    send_test_notification(ADMIN_ID, $test_type);
+    exit;
+}
+
+// ==============================
+// BOT SUCCESSFULLY LOADED MESSAGE
+// ==============================
+bot_log("Bot successfully loaded and ready!");
 ?>
+
