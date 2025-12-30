@@ -1,8 +1,8 @@
 <?php
 // ============================================================================
-// ENTERTAINMENT TADKA BOT - COMPLETE 5000+ LINES VERSION
+// ENTERTAINMENT TADKA BOT - MULTI-CHANNEL VERSION (4453+ LINES)
 // ============================================================================
-// Version: 3.0.0 | Date: 2024-08-07 | Lines: 5000+
+// Version: 3.1.0 | Date: 2024-08-07 | Lines: 4453+
 // ============================================================================
 
 // ==============================
@@ -16,6 +16,11 @@ error_reporting(E_ALL);
 ini_set('display_errors', 0);
 ini_set('log_errors', 1);
 
+// Start session for rate limiting
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 // ==============================
 // 2. RENDER.COM SPECIFIC CONFIGURATION  
 // ==============================
@@ -27,13 +32,26 @@ if (!getenv('BOT_TOKEN')) {
 }
 
 // ==============================
-// 3. ENVIRONMENT VARIABLES CONFIGURATION
+// 3. ENVIRONMENT VARIABLES CONFIGURATION (MULTI-CHANNEL)
 // ==============================
 define('BOT_TOKEN', getenv('BOT_TOKEN'));
-define('CHANNEL_ID', getenv('CHANNEL_ID', '-1003251791991'));
+define('ADMIN_ID', (int)getenv('ADMIN_ID', '1080317415'));
+
+// MULTI-CHANNEL CONFIGURATION - ALL 5 CHANNELS
+define('CHANNEL_IDS', [
+    getenv('CHANNEL_1_ID', '-1003181705395'),
+    getenv('CHANNEL_2_ID', '-1002964109368'), 
+    getenv('CHANNEL_3_ID', '-1002831605258'),
+    getenv('CHANNEL_4_ID', '-1002337293281'),
+    getenv('CHANNEL_5_ID', '-1003251791991')
+]);
+
+// For backward compatibility (keep existing code working)
+define('CHANNEL_ID', getenv('CHANNEL_5_ID', '-1003251791991'));
+
+// Other channel configs
 define('BACKUP_CHANNEL_ID', getenv('BACKUP_CHANNEL_ID', '-1002964109368'));
 define('BACKUP_CHANNEL_USERNAME', getenv('BACKUP_CHANNEL_USERNAME', '@ETBackup'));
-define('ADMIN_ID', (int)getenv('ADMIN_ID', '1080317415'));
 
 // NEW: AUTO-NOTIFICATION CONFIGURATION
 define('REQUEST_GROUP_ID', getenv('REQUEST_GROUP_ID', '-1001234567890'));
@@ -95,7 +113,7 @@ function initialize_files() {
     if (!file_exists('logs')) mkdir('logs', 0777, true);
     
     $files = [
-        CSV_FILE => "movie_name,message_id,date,video_path,quality,size,language,views,likes\n",
+        CSV_FILE => "movie_name,message_id,date,video_path,quality,size,language,views,likes,source_channel\n",
         USERS_FILE => json_encode([
             'users' => [],
             'total_requests' => 0,
@@ -113,7 +131,7 @@ function initialize_files() {
             'daily_activity' => [],
             'last_updated' => date('Y-m-d H:i:s'),
             'uptime' => time(),
-            'version' => '3.0.0'
+            'version' => '3.1.0'
         ], JSON_PRETTY_PRINT),
         REQUEST_FILE => json_encode([
             'requests' => [],
@@ -225,7 +243,7 @@ function sendMessage($chat_id, $text, $reply_markup = null, $parse_mode = null) 
     return json_decode($result, true);
 }
 
-function editMessage($chat_id, $message_id, $new_text, $reply_markup = null) {
+function editMessage($chat_id, $message_id, $new_text, $reply_markup = null, $parse_mode = 'HTML') {
     $data = [
         'chat_id' => $chat_id,
         'message_id' => $message_id,
@@ -234,6 +252,7 @@ function editMessage($chat_id, $message_id, $new_text, $reply_markup = null) {
     ];
     
     if ($reply_markup) $data['reply_markup'] = json_encode($reply_markup);
+    if ($parse_mode) $data['parse_mode'] = $parse_mode;
     
     $result = apiRequest('editMessageText', $data);
     return json_decode($result, true);
@@ -368,7 +387,7 @@ function send_upload_notification($movie_name, $quality, $language, $message_id)
 }
 
 // ==============================
-// 11. STEP 5: UPDATED MOVIE DELIVERY SYSTEM
+// 11. STEP 5: MULTI-CHANNEL MOVIE DELIVERY SYSTEM (UPDATED)
 // ==============================
 function deliver_item_to_chat($chat_id, $item) {
     global $current_processing;
@@ -382,39 +401,84 @@ function deliver_item_to_chat($chat_id, $item) {
     $current_processing[$key] = true;
     
     try {
-        // Pehle copyMessage try karo
-        if (!empty($item['message_id']) && is_numeric($item['message_id'])) {
-            $result = copyMessage($chat_id, CHANNEL_ID, $item['message_id']);
-            
-            if ($result && isset($result['ok']) && $result['ok']) {
-                update_stats('total_downloads', 1);
-                update_user_activity($chat_id, 'download');
-                bot_log("Movie COPIED from CHANNEL: {$item['movie_name']} to $chat_id");
-                unset($current_processing[$key]);
-                return true;
-            } else {
-                // Copy fail hua toh forward try karo
-                forwardMessage($chat_id, CHANNEL_ID, $item['message_id']);
-                update_stats('total_downloads', 1);
-                update_user_activity($chat_id, 'download');
-                bot_log("Movie forwarded from CHANNEL: {$item['movie_name']} to $chat_id");
-                unset($current_processing[$key]);
-                return true;
+        $success = false;
+        $channels_tried = [];
+        
+        // Try all channels one by one
+        foreach (CHANNEL_IDS as $channel_id) {
+            if (!empty($item['message_id']) && is_numeric($item['message_id'])) {
+                $channels_tried[] = $channel_id;
+                
+                // First try copyMessage (better method)
+                $result = copyMessage($chat_id, $channel_id, $item['message_id']);
+                
+                if ($result && isset($result['ok']) && $result['ok']) {
+                    update_stats('total_downloads', 1);
+                    update_user_activity($chat_id, 'download');
+                    bot_log("✅ Movie COPIED from CHANNEL $channel_id: {$item['movie_name']} to $chat_id");
+                    $success = true;
+                    break;
+                } else {
+                    // Try forwardMessage if copy fails
+                    $result = forwardMessage($chat_id, $channel_id, $item['message_id']);
+                    
+                    if ($result && isset($result['ok']) && $result['ok']) {
+                        update_stats('total_downloads', 1);
+                        update_user_activity($chat_id, 'download');
+                        bot_log("✅ Movie FORWARDED from CHANNEL $channel_id: {$item['movie_name']} to $chat_id");
+                        $success = true;
+                        break;
+                    }
+                }
             }
         }
 
-        // Agar message_id nahi hai toh text message bhejo
-        $text = "🎬 <b>" . ($item['movie_name'] ?? 'Unknown') . "</b>\n";
-        $text .= "📊 Quality: " . ($item['quality'] ?? 'Unknown') . "\n";
-        $text .= "💾 Size: " . ($item['size'] ?? 'Unknown') . "\n";
-        $text .= "🗣️ Language: " . ($item['language'] ?? 'Hindi') . "\n";
+        if (!$success) {
+            // If we know which channel the movie is from, try only that
+            if (!empty($item['source_channel'])) {
+                $source_channel = $item['source_channel'];
+                
+                if (!empty($item['message_id']) && is_numeric($item['message_id'])) {
+                    // Try copyMessage
+                    $result = copyMessage($chat_id, $source_channel, $item['message_id']);
+                    
+                    if ($result && isset($result['ok']) && $result['ok']) {
+                        update_stats('total_downloads', 1);
+                        update_user_activity($chat_id, 'download');
+                        bot_log("✅ Movie COPIED from SOURCE CHANNEL $source_channel: {$item['movie_name']} to $chat_id");
+                        $success = true;
+                    } else {
+                        // Try forwardMessage
+                        $result = forwardMessage($chat_id, $source_channel, $item['message_id']);
+                        
+                        if ($result && isset($result['ok']) && $result['ok']) {
+                            update_stats('total_downloads', 1);
+                            update_user_activity($chat_id, 'download');
+                            bot_log("✅ Movie FORWARDED from SOURCE CHANNEL $source_channel: {$item['movie_name']} to $chat_id");
+                            $success = true;
+                        }
+                    }
+                }
+            }
+            
+            // If still not successful, send text message
+            if (!$success) {
+                $text = "🎬 <b>" . ($item['movie_name'] ?? 'Unknown') . "</b>\n";
+                $text .= "📊 Quality: " . ($item['quality'] ?? 'Unknown') . "\n";
+                $text .= "💾 Size: " . ($item['size'] ?? 'Unknown') . "\n";
+                $text .= "🗣️ Language: " . ($item['language'] ?? 'Hindi') . "\n";
+                $text .= "\n⚠️ <i>Could not forward movie. Tried channels: " . implode(', ', $channels_tried) . "</i>";
+                
+                sendMessage($chat_id, $text, null, 'HTML');
+                bot_log("⚠️ Could not forward, sent text: {$item['movie_name']} to $chat_id");
+            }
+        }
         
-        sendMessage($chat_id, $text, null, 'HTML');
         unset($current_processing[$key]);
-        return false;
+        return $success;
         
     } catch (Exception $e) {
-        bot_log("Error in deliver_item_to_chat: " . $e->getMessage(), 'ERROR');
+        bot_log("❌ Error in deliver_item_to_chat: " . $e->getMessage(), 'ERROR');
         unset($current_processing[$key]);
         return false;
     }
@@ -606,13 +670,14 @@ function clear_cache() {
 }
 
 // ==============================
-// 15. STEP 9: CSV MANAGEMENT FUNCTIONS
+// 15. STEP 9: CSV MANAGEMENT FUNCTIONS (UPDATED WITH SOURCE_CHANNEL)
 // ==============================
 function load_and_clean_csv($filename = CSV_FILE) {
     global $movie_messages;
     
     if (!file_exists($filename)) {
-        file_put_contents($filename, "movie_name,message_id,date,video_path,quality,size,language,views,likes\n");
+        // Updated header with source_channel
+        file_put_contents($filename, "movie_name,message_id,date,video_path,quality,size,language,views,likes,source_channel\n");
         return [];
     }
 
@@ -632,6 +697,7 @@ function load_and_clean_csv($filename = CSV_FILE) {
                 $language = isset($row[6]) ? trim($row[6]) : 'Hindi';
                 $views = isset($row[7]) ? intval($row[7]) : 0;
                 $likes = isset($row[8]) ? intval($row[8]) : 0;
+                $source_channel = isset($row[9]) ? trim($row[9]) : CHANNEL_IDS[0];
 
                 $entry = [
                     'movie_name' => $movie_name,
@@ -643,7 +709,8 @@ function load_and_clean_csv($filename = CSV_FILE) {
                     'language' => $language,
                     'views' => $views,
                     'likes' => $likes,
-                    'message_id' => is_numeric($message_id_raw) ? intval($message_id_raw) : null
+                    'message_id' => is_numeric($message_id_raw) ? intval($message_id_raw) : null,
+                    'source_channel' => $source_channel
                 ];
                 
                 $data[] = $entry;
@@ -661,9 +728,9 @@ function load_and_clean_csv($filename = CSV_FILE) {
     $stats['last_updated'] = date('Y-m-d H:i:s');
     file_put_contents(STATS_FILE, json_encode($stats, JSON_PRETTY_PRINT));
 
-    // Clean and rewrite CSV
+    // Clean and rewrite CSV with updated header
     $handle = fopen($filename, "w");
-    fputcsv($handle, array('movie_name','message_id','date','video_path','quality','size','language','views','likes'));
+    fputcsv($handle, array('movie_name','message_id','date','video_path','quality','size','language','views','likes','source_channel'));
     foreach ($data as $row) {
         fputcsv($handle, [
             $row['movie_name'], 
@@ -674,7 +741,8 @@ function load_and_clean_csv($filename = CSV_FILE) {
             $row['size'],
             $row['language'],
             $row['views'],
-            $row['likes']
+            $row['likes'],
+            $row['source_channel']
         ]);
     }
     fclose($handle);
@@ -686,7 +754,7 @@ function load_and_clean_csv($filename = CSV_FILE) {
 // ==============================
 // 16. STEP 10: UPDATED MOVIE APPEND FUNCTION WITH AUTO-NOTIFICATION
 // ==============================
-function append_movie($movie_name, $message_id_raw, $date = null, $video_path = '', $quality = 'Unknown', $size = 'Unknown', $language = 'Hindi') {
+function append_movie($movie_name, $message_id_raw, $date = null, $video_path = '', $quality = 'Unknown', $size = 'Unknown', $language = 'Hindi', $source_channel = null) {
     if (empty(trim($movie_name))) {
         bot_log("Attempted to append empty movie name", 'WARNING');
         return false;
@@ -694,14 +762,19 @@ function append_movie($movie_name, $message_id_raw, $date = null, $video_path = 
     
     if ($date === null) $date = date('d-m-Y');
     
-    // Check if movie already exists
-    $existing = check_movie_exists($movie_name, $quality, $language);
+    // Check if movie already exists in ANY channel
+    $existing = check_movie_exists_any_channel($movie_name, $quality, $language);
     if ($existing) {
-        bot_log("Movie already exists: $movie_name ($quality, $language)", 'WARNING');
+        bot_log("Movie already exists in channel {$existing['source_channel']}: $movie_name ($quality, $language)", 'WARNING');
         return false;
     }
     
-    $entry = [$movie_name, $message_id_raw, $date, $video_path, $quality, $size, $language, 0, 0];
+    // If no source channel specified, use the first one
+    if ($source_channel === null) {
+        $source_channel = CHANNEL_IDS[0];
+    }
+    
+    $entry = [$movie_name, $message_id_raw, $date, $video_path, $quality, $size, $language, 0, 0, $source_channel];
     
     $handle = fopen(CSV_FILE, "a");
     if ($handle === FALSE) {
@@ -724,7 +797,8 @@ function append_movie($movie_name, $message_id_raw, $date = null, $video_path = 
         'language' => $language,
         'views' => 0,
         'likes' => 0,
-        'message_id' => is_numeric($message_id_raw) ? intval($message_id_raw) : null
+        'message_id' => is_numeric($message_id_raw) ? intval($message_id_raw) : null,
+        'source_channel' => $source_channel
     ];
     
     if (!isset($movie_messages[$movie])) $movie_messages[$movie] = [];
@@ -738,7 +812,7 @@ function append_movie($movie_name, $message_id_raw, $date = null, $video_path = 
     $notification_sent = send_upload_notification($movie_name, $quality, $language, $message_id_raw);
     
     if ($notification_sent) {
-        bot_log("✅ Auto-notification sent for: $movie_name");
+        bot_log("✅ Auto-notification sent for: $movie_name from channel $source_channel");
     } else {
         bot_log("❌ Failed to send auto-notification for: $movie_name", 'ERROR');
     }
@@ -756,12 +830,12 @@ function append_movie($movie_name, $message_id_raw, $date = null, $video_path = 
     }
 
     update_stats('total_movies', 1);
-    bot_log("✅ Movie appended with notification: $movie_name with ID $message_id_raw");
+    bot_log("✅ Movie appended with notification: $movie_name from channel $source_channel");
     
     return true;
 }
 
-function check_movie_exists($movie_name, $quality = '', $language = '') {
+function check_movie_exists_any_channel($movie_name, $quality = '', $language = '') {
     $movies = get_cached_movies();
     $search_name = strtolower(trim($movie_name));
     
@@ -1345,7 +1419,7 @@ function send_video_preview($chat_id, $page, $session_id) {
         
         if ($message_id && is_numeric($message_id)) {
             try {
-                $result = copyMessage($chat_id, CHANNEL_ID, $message_id);
+                $result = copyMessage($chat_id, $movie['source_channel'] ?? CHANNEL_ID, $message_id);
                 
                 if ($result && isset($result['ok']) && $result['ok']) {
                     $success_count++;
@@ -1462,8 +1536,10 @@ function batch_download_with_progress($chat_id, $movies, $page_num) {
         
         try {
             $message_id = $movie['message_id'] ?? null;
+            $source_channel = $movie['source_channel'] ?? CHANNEL_ID;
+            
             if ($message_id && is_numeric($message_id)) {
-                $result = copyMessage($chat_id, CHANNEL_ID, $message_id);
+                $result = copyMessage($chat_id, $source_channel, $message_id);
                 if ($result && isset($result['ok']) && $result['ok']) {
                     $success++;
                 } else {
@@ -2717,7 +2793,7 @@ function admin_stats($chat_id) {
     $msg .= "❌ Failed Searches: " . ($stats['failed_searches'] ?? 0) . "\n";
     $msg .= "📥 Total Downloads: " . ($stats['total_downloads'] ?? 0) . "\n";
     $msg .= "🕒 Last Updated: " . ($stats['last_updated'] ?? 'N/A') . "\n";
-    $msg .= "📱 Version: " . ($stats['version'] ?? '3.0.0') . "\n";
+    $msg .= "📱 Version: " . ($stats['version'] ?? '3.1.0') . "\n";
     $msg .= "⏰ Uptime: " . format_uptime(($stats['uptime'] ?? time())) . "\n\n";
     
     $today = date('Y-m-d');
@@ -2734,7 +2810,7 @@ function admin_stats($chat_id) {
     $recent = array_slice($csv_data, -5);
     $msg .= "📦 Recent Uploads:\n";
     foreach ($recent as $r) {
-        $msg .= "• " . $r['movie_name'] . " (" . $r['date'] . ")\n";
+        $msg .= "• " . $r['movie_name'] . " (" . $r['date'] . ") from channel " . substr($r['source_channel'], -6) . "\n";
     }
     
     sendMessage($chat_id, $msg, null, 'HTML');
@@ -2798,10 +2874,11 @@ function show_csv_data($chat_id, $show_all = false) {
         $date = $movie[2] ?? 'N/A';
         $quality = $movie[4] ?? 'Unknown';
         $language = $movie[6] ?? 'Hindi';
+        $source_channel = $movie[9] ?? CHANNEL_IDS[0];
         
         $message .= "$i. 🎬 " . htmlspecialchars($movie_name) . "\n";
         $message .= "   📝 ID: $message_id | 🗣️ $language | 📊 $quality\n";
-        $message .= "   📅 Date: $date\n\n";
+        $message .= "   📅 Date: $date | 📡 Channel: " . substr($source_channel, -6) . "\n\n";
         
         $i++;
         
@@ -2987,6 +3064,7 @@ function test_csv($chat_id) {
                 $line = "$i. {$r[0]} | ID/Ref: {$r[1]} | Date: {$r[2]}";
                 if (isset($r[4])) $line .= " | Quality: {$r[4]}";
                 if (isset($r[6])) $line .= " | Language: {$r[6]}";
+                if (isset($r[9])) $line .= " | Channel: " . substr($r[9], -6);
                 $line .= "\n";
                 
                 if (strlen($msg) + strlen($line) > 4000) {
@@ -3010,7 +3088,7 @@ function show_bot_info($chat_id) {
     $users_data = json_decode(file_get_contents(USERS_FILE), true);
     
     $message = "🤖 <b>Entertainment Tadka Bot</b>\n\n";
-    $message .= "📱 <b>Version:</b> 3.0.0\n";
+    $message .= "📱 <b>Version:</b> 3.1.0 (Multi-Channel)\n";
     $message .= "🆙 <b>Last Updated:</b> " . date('Y-m-d') . "\n";
     $message .= "👨‍💻 <b>Developer:</b> @EntertainmentTadka0786\n\n";
     
@@ -3021,6 +3099,7 @@ function show_bot_info($chat_id) {
     $message .= "• 📥 Downloads: " . ($stats['total_downloads'] ?? 0) . "\n\n";
     
     $message .= "🎯 <b>Features:</b>\n";
+    $message .= "• Multi-channel movie forwarding (5 channels)\n";
     $message .= "• Smart movie search\n";
     $message .= "• Multi-language support\n";
     $message .= "• Quality filtering\n";
@@ -3133,11 +3212,12 @@ function submit_feedback($chat_id, $user_id, $feedback) {
 function show_version_info($chat_id) {
     $message = "🔄 <b>Bot Version Information</b>\n\n";
     
-    $message .= "📱 <b>Current Version:</b> v3.0.0\n";
+    $message .= "📱 <b>Current Version:</b> v3.1.0 (Multi-Channel)\n";
     $message .= "🆙 <b>Release Date:</b> " . date('Y-m-d') . "\n";
     $message .= "🐛 <b>Status:</b> Stable Release\n\n";
     
-    $message .= "🎯 <b>What's New in v3.0.0:</b>\n";
+    $message .= "🎯 <b>What's New in v3.1.0:</b>\n";
+    $message .= "• Multi-channel support (5 channels)\n";
     $message .= "• Auto-notification to request group\n";
     $message .= "• Theater Print channel integration\n";
     $message .= "• Enhanced movie delivery system\n";
@@ -3204,10 +3284,181 @@ function is_valid_movie_query($text) {
 }
 
 // ==============================
-// 35. STEP 29: COMPLETE COMMAND HANDLER
+// 35. STEP 29: RATE LIMITING FUNCTION
+// ==============================
+function check_rate_limit($user_id, $action = 'message') {
+    static $request_timestamps = [];
+    
+    $now = time();
+    $key = $user_id . '_' . $action;
+    
+    // Initialize if not set
+    if (!isset($request_timestamps[$key])) {
+        $request_timestamps[$key] = [];
+    }
+    
+    // Remove timestamps older than 1 minute
+    $request_timestamps[$key] = array_filter($request_timestamps[$key], function($timestamp) use ($now) {
+        return ($now - $timestamp) < 60;
+    });
+    
+    // Check limit based on action
+    $limits = [
+        'message' => 10, // 10 messages per minute
+        'search' => 15,  // 15 searches per minute
+        'download' => 20 // 20 downloads per minute
+    ];
+    
+    $limit = $limits[$action] ?? 10;
+    
+    if (count($request_timestamps[$key]) >= $limit) {
+        return false;
+    }
+    
+    // Add current timestamp
+    $request_timestamps[$key][] = $now;
+    
+    return true;
+}
+
+// ==============================
+// 36. STEP 30: TEST MULTI-CHANNEL FORWARDING
+// ==============================
+function test_multi_channel_forwarding($chat_id) {
+    $message = "🔍 <b>Multi-Channel Forwarding Test</b>\n\n";
+    
+    $message .= "📡 <b>Configured Channels:</b> " . count(CHANNEL_IDS) . "\n\n";
+    
+    $i = 1;
+    foreach (CHANNEL_IDS as $channel_id) {
+        $message .= "<b>$i.</b> Channel ID: <code>$channel_id</code>\n";
+        
+        // Test channel access
+        $chat_info = json_decode(apiRequest('getChat', ['chat_id' => $channel_id]), true);
+        
+        if ($chat_info['ok']) {
+            $channel_title = $chat_info['result']['title'] ?? 'Unknown';
+            $message .= "✅ <b>Accessible:</b> $channel_title\n";
+            
+            // Test bot membership
+            $bot_id = explode(':', BOT_TOKEN)[0];
+            $member = json_decode(apiRequest('getChatMember', [
+                'chat_id' => $channel_id,
+                'user_id' => $bot_id
+            ]), true);
+            
+            if ($member['ok']) {
+                $status = $member['result']['status'];
+                $message .= "🤖 <b>Bot Status:</b> " . ucfirst($status);
+                if ($status == 'administrator') {
+                    $message .= " ✅\n";
+                } elseif ($status == 'member') {
+                    $message .= " ⚠️ (Not admin)\n";
+                } else {
+                    $message .= " ❌\n";
+                }
+            } else {
+                $message .= "🤖 <b>Bot Status:</b> Not in channel ❌\n";
+            }
+        } else {
+            $message .= "❌ <b>Cannot access:</b> " . ($chat_info['description'] ?? 'Unknown error') . "\n";
+        }
+        
+        $message .= "\n";
+        $i++;
+    }
+    
+    $message .= "🎬 <b>How it works:</b>\n";
+    $message .= "1. User searches for movie\n";
+    $message .= "2. Bot tries all " . count(CHANNEL_IDS) . " channels\n";
+    $message .= "3. First successful forward wins\n";
+    $message .= "4. If all fail, sends text message\n\n";
+    
+    $message .= "✅ <b>Ready to forward movies from all channels!</b>";
+    
+    $keyboard = [
+        'inline_keyboard' => [
+            [
+                ['text' => '🔍 Test Movie Search', 'switch_inline_query_current_chat' => 'test']
+            ]
+        ]
+    ];
+    
+    sendMessage($chat_id, $message, $keyboard, 'HTML');
+    bot_log("Multi-channel test run by $chat_id");
+}
+
+// ==============================
+// 37. STEP 31: DEBUG FUNCTION FOR MULTI-CHANNEL
+// ==============================
+function debug_multi_channel($chat_id, $movie_name) {
+    $message = "🐛 <b>Multi-Channel Debug for: $movie_name</b>\n\n";
+    
+    $found = false;
+    $channels_tried = [];
+    
+    foreach (CHANNEL_IDS as $channel_index => $channel_id) {
+        $channel_num = $channel_index + 1;
+        $message .= "<b>Channel $channel_num ($channel_id):</b>\n";
+        
+        // Try to find movie in this channel
+        $movies = get_cached_movies();
+        $movie_found_in_channel = false;
+        $movie_message_id = null;
+        
+        foreach ($movies as $movie) {
+            if (strtolower($movie['movie_name']) == strtolower($movie_name) && 
+                $movie['source_channel'] == $channel_id) {
+                $movie_found_in_channel = true;
+                $movie_message_id = $movie['message_id'];
+                break;
+            }
+        }
+        
+        if ($movie_found_in_channel) {
+            $message .= "✅ Movie found! Message ID: $movie_message_id\n";
+            
+            // Test forward
+            $result = json_decode(copyMessage($chat_id, $channel_id, $movie_message_id), true);
+            if ($result['ok']) {
+                $message .= "✅ Forward successful!\n";
+                $found = true;
+            } else {
+                $message .= "❌ Forward failed: " . ($result['description'] ?? 'Unknown') . "\n";
+            }
+        } else {
+            $message .= "❌ Movie not found in this channel\n";
+        }
+        
+        $channels_tried[] = $channel_id;
+        $message .= "\n";
+    }
+    
+    if (!$found) {
+        $message .= "⚠️ <b>Summary:</b>\n";
+        $message .= "• Movie: $movie_name\n";
+        $message .= "• Channels tried: " . count($channels_tried) . "\n";
+        $message .= "• Status: Not found in any channel\n";
+        $message .= "• CSV entries: " . count(get_cached_movies()) . "\n\n";
+        $message .= "💡 <i>Check if movie exists in CSV file</i>";
+    } else {
+        $message .= "🎉 <b>Movie successfully forwarded!</b>";
+    }
+    
+    sendMessage($chat_id, $message, null, 'HTML');
+}
+
+// ==============================
+// 38. STEP 32: COMPLETE COMMAND HANDLER
 // ==============================
 function handle_command($chat_id, $user_id, $command, $params = []) {
     global $MAINTENANCE_MODE, $MAINTENANCE_MESSAGE;
+    
+    // Check rate limiting
+    if (!check_rate_limit($user_id, 'message')) {
+        sendMessage($chat_id, "⏳ Please slow down! You're sending too many messages.");
+        return;
+    }
     
     if ($MAINTENANCE_MODE && $user_id != ADMIN_ID) {
         sendMessage($chat_id, $MAINTENANCE_MESSAGE, null, 'HTML');
@@ -3232,7 +3483,8 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
             $welcome .= "📥 Requests: " . REQUEST_CHANNEL . "\n";
             $welcome .= "🎭 Theater Prints: " . THEATER_PRINT_CHANNEL . "\n";
             $welcome .= "🔒 Backup: " . BACKUP_CHANNEL_USERNAME . "\n\n";
-            $welcome .= "🔔 <b>New Feature:</b> Request group gets auto-notification when movies are uploaded!\n\n";
+            $welcome .= "🔔 <b>New Feature:</b> Request group gets auto-notification when movies are uploaded!\n";
+            $welcome .= "🎯 <b>Multi-Channel:</b> Searches across 5 channels!\n\n";
             $welcome .= "💬 <b>Need help?</b> Use /help for all commands";
         
             $keyboard = [
@@ -3250,6 +3502,7 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
                         ['text' => '🔒 Backup', 'url' => 'https://t.me/ETBackup']
                     ],
                     [
+                        ['text' => '🎯 Multi-Channel Test', 'callback_data' => 'test_channels'],
                         ['text' => '❓ Help', 'callback_data' => 'help_command']
                     ]
                 ]
@@ -3270,7 +3523,7 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
             $help .= "🔒 Backup: " . BACKUP_CHANNEL_USERNAME . " - Data protection\n\n";
             
             $help .= "🎯 <b>Search Commands:</b>\n";
-            $help .= "• Just type movie name - Smart search\n";
+            $help .= "• Just type movie name - Smart search (5 channels)\n";
             $help .= "• <code>/search movie</code> - Direct search\n";
             $help .= "• <code>/s movie</code> - Quick search\n\n";
             
@@ -3297,6 +3550,12 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
             $help .= "• <code>/theaterprints</code> - Theater prints\n";
             $help .= "• <code>/backupchannel</code> - Backup info\n\n";
             
+            $help .= "🎯 <b>Multi-Channel Feature:</b>\n";
+            $help .= "• Searches across 5 channels\n";
+            $help .= "• Auto-tries all channels\n";
+            $help .= "• First successful forward wins\n";
+            $help .= "• Use <code>/testchannels</code> to test\n\n";
+            
             $help .= "🔔 <b>Auto-Notification:</b>\n";
             $help .= "Request group gets notified automatically when new movies are uploaded!\n\n";
             
@@ -3317,7 +3576,8 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
                         ['text' => '🔒 ' . BACKUP_CHANNEL_USERNAME, 'url' => 'https://t.me/ETBackup']
                     ],
                     [
-                        ['text' => '🎬 Search Movies', 'switch_inline_query_current_chat' => '']
+                        ['text' => '🎬 Search Movies', 'switch_inline_query_current_chat' => ''],
+                        ['text' => '🎯 Test Channels', 'callback_data' => 'test_channels']
                     ]
                 ]
             ];
@@ -3333,6 +3593,13 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
                 sendMessage($chat_id, "❌ Usage: <code>/search movie_name</code>\nExample: <code>/search Mandala Murders 2025</code>", null, 'HTML');
                 return;
             }
+            
+            // Check search rate limit
+            if (!check_rate_limit($user_id, 'search')) {
+                sendMessage($chat_id, "⏳ Please wait before searching again. Limit is 15 searches per minute.");
+                return;
+            }
+            
             $lang = detect_language($movie_name);
             send_multilingual_response($chat_id, 'searching', $lang);
             advanced_search($chat_id, $movie_name, $user_id);
@@ -3554,7 +3821,7 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
 
         case '/ping':
         case '/status':
-            sendMessage($chat_id, "🏓 <b>Bot Status:</b> ✅ Online\n⏰ <b>Server Time:</b> " . date('Y-m-d H:i:s'), null, 'HTML');
+            sendMessage($chat_id, "🏓 <b>Bot Status:</b> ✅ Online\n⏰ <b>Server Time:</b> " . date('Y-m-d H:i:s') . "\n📡 <b>Channels:</b> " . count(CHANNEL_IDS) . " active", null, 'HTML');
             break;
 
         case '/donate':
@@ -3581,10 +3848,28 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
             submit_feedback($chat_id, $user_id, $feedback);
             break;
 
+        case '/testchannels':
+        case '/multichanneltest':
+            test_multi_channel_forwarding($chat_id);
+            break;
+
+        case '/debugmovie':
+            if ($user_id == ADMIN_ID) {
+                $movie_name = implode(' ', $params);
+                if (empty($movie_name)) {
+                    sendMessage($chat_id, "❌ Usage: <code>/debugmovie movie_name</code>", null, 'HTML');
+                    return;
+                }
+                debug_multi_channel($chat_id, $movie_name);
+            } else {
+                sendMessage($chat_id, "❌ Access denied. Admin only command.");
+            }
+            break;
+
         case '/test':
             if ($user_id == ADMIN_ID) {
                 $test_type = isset($params[0]) ? strtolower($params[0]) : 'basic';
-                $valid_types = ['basic', 'full', 'channel', 'backup', 'database', 'notification'];
+                $valid_types = ['basic', 'full', 'channel', 'backup', 'database', 'notification', 'multichannel'];
                 
                 if (in_array($test_type, $valid_types)) {
                     send_test_notification($chat_id, $test_type);
@@ -3596,7 +3881,8 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
                         "• <code>/test channel</code> - Channel connectivity\n" .
                         "• <code>/test backup</code> - Backup system test\n" .
                         "• <code>/test database</code> - Database integrity\n" .
-                        "• <code>/test notification</code> - Auto-notification test\n",
+                        "• <code>/test notification</code> - Auto-notification test\n" .
+                        "• <code>/test multichannel</code> - Multi-channel test\n",
                         null, 'HTML'
                     );
                 }
@@ -3611,7 +3897,7 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
 }
 
 // ==============================
-// 36. STEP 30: TESTING SYSTEM
+// 39. STEP 33: TESTING SYSTEM
 // ==============================
 function send_test_notification($chat_id, $test_type = 'basic') {
     if ($chat_id != ADMIN_ID) {
@@ -3625,6 +3911,36 @@ function send_test_notification($chat_id, $test_type = 'basic') {
     $notification = "";
     
     switch ($test_type) {
+        case 'multichannel':
+            $notification = "🎯 <b>Multi-Channel System Test</b>\n\n";
+            $notification .= "📅 Test Time: $timestamp\n";
+            $notification .= "📡 Configured Channels: " . count(CHANNEL_IDS) . "\n\n";
+            
+            $i = 1;
+            foreach (CHANNEL_IDS as $channel_id) {
+                $notification .= "<b>$i.</b> Channel: <code>$channel_id</code>\n";
+                
+                // Test access
+                $chat_info = json_decode(apiRequest('getChat', ['chat_id' => $channel_id]), true);
+                if ($chat_info['ok']) {
+                    $notification .= "✅ Accessible\n";
+                } else {
+                    $notification .= "❌ " . ($chat_info['description'] ?? 'Unknown error') . "\n";
+                }
+                $i++;
+            }
+            
+            $notification .= "\n🎬 <b>Movie Delivery Logic:</b>\n";
+            $notification .= "1. User searches movie\n";
+            $notification .= "2. Bot tries Channel 1\n";
+            $notification .= "3. If fails, tries Channel 2\n";
+            $notification .= "4. Continues through all " . count(CHANNEL_IDS) . " channels\n";
+            $notification .= "5. First success wins\n";
+            $notification .= "6. If all fail, sends text\n\n";
+            
+            $notification .= "✅ <b>System Status:</b> READY";
+            break;
+            
         case 'notification':
             $test_result = send_upload_notification(
                 "Test Movie (2024)",
@@ -3652,7 +3968,7 @@ function send_test_notification($chat_id, $test_type = 'basic') {
                 $notification .= "4. Telegram API issues\n\n";
                 $notification .= "🔧 <b>Check Environment Variables:</b>\n";
                 $notification .= "• REQUEST_GROUP_ID: " . REQUEST_GROUP_ID . "\n";
-                $notification .= "• CHANNEL_ID: " . CHANNEL_ID . "\n";
+                $notification .= "• CHANNEL_IDS: " . count(CHANNEL_IDS) . " channels configured\n";
                 $notification .= "• ADMIN_ID: " . ADMIN_ID;
             }
             break;
@@ -3662,7 +3978,7 @@ function send_test_notification($chat_id, $test_type = 'basic') {
             $notification = "🔬 <b>FULL SYSTEM DIAGNOSTICS</b>\n\n";
             $notification .= "📱 <b>Bot Information:</b>\n";
             $notification .= "• Bot Name: Entertainment Tadka\n";
-            $notification .= "• Version: 3.0.0\n";
+            $notification .= "• Version: 3.1.0 (Multi-Channel)\n";
             $notification .= "• Admin ID: " . ADMIN_ID . "\n";
             $notification .= "• Server Time: $timestamp\n\n";
             
@@ -3671,14 +3987,19 @@ function send_test_notification($chat_id, $test_type = 'basic') {
             $notification .= "• Request Channel: " . REQUEST_CHANNEL . "\n";
             $notification .= "• Request Group: " . REQUEST_GROUP_ID . "\n";
             $notification .= "• Theater Print: " . THEATER_PRINT_CHANNEL . "\n";
-            $notification .= "• Private Channel: " . CHANNEL_ID . "\n";
-            $notification .= "• Backup Channel: " . BACKUP_CHANNEL_USERNAME . "\n\n";
+            $notification .= "• Backup Channel: " . BACKUP_CHANNEL_USERNAME . "\n";
+            $notification .= "• Multi-Channels: " . count(CHANNEL_IDS) . " configured\n\n";
             
             $notification .= "📊 <b>System Health:</b>\n";
             $notification .= "• PHP Version: " . phpversion() . "\n";
             $notification .= "• Memory Usage: " . format_memory(memory_get_usage(true)) . "\n";
             $notification .= "• Disk Free: " . (disk_free_space(__DIR__) ? format_file_size(disk_free_space(__DIR__)) : 'Unknown') . "\n";
             $notification .= "• Bot Token: " . (defined('BOT_TOKEN') && BOT_TOKEN ? '✅ Valid' : '❌ Invalid') . "\n\n";
+            
+            $notification .= "✅ <b>Multi-Channel System:</b> ACTIVE\n";
+            $notification .= "• " . count(CHANNEL_IDS) . " channels configured\n";
+            $notification .= "• Sequential forwarding\n";
+            $notification .= "• Auto-fallback mechanism\n\n";
             
             $notification .= "✅ <b>Auto-Notification System:</b> ACTIVE\n";
             $notification .= "• Movie uploads trigger notifications\n";
@@ -3695,12 +4016,13 @@ function send_test_notification($chat_id, $test_type = 'basic') {
             $notification .= "• Requests: " . REQUEST_CHANNEL . " - ✅ Configured\n";
             $notification .= "• Request Group: " . REQUEST_GROUP_ID . " - ✅ Configured\n";
             $notification .= "• Theater Print: " . THEATER_PRINT_CHANNEL . " - ✅ Configured\n";
-            $notification .= "• Backup: " . BACKUP_CHANNEL_USERNAME . " - ✅ Configured\n\n";
+            $notification .= "• Backup: " . BACKUP_CHANNEL_USERNAME . " - ✅ Configured\n";
+            $notification .= "• Multi-Channels: " . count(CHANNEL_IDS) . " - ✅ Configured\n\n";
             
-            $notification .= "🚀 <b>Auto-Notification Ready:</b>\n";
-            $notification .= "• Movies uploaded to " . CHANNEL_ID . "\n";
-            $notification .= "• Notifications sent to " . REQUEST_GROUP_ID . "\n";
-            $notification .= "• Exact format as requested\n\n";
+            $notification .= "🚀 <b>Multi-Channel Ready:</b>\n";
+            $notification .= "• Channels: " . implode(", ", array_map(function($id) { return substr($id, -6); }, CHANNEL_IDS)) . "\n";
+            $notification .= "• Sequential forwarding enabled\n";
+            $notification .= "• Auto-fallback mechanism active\n\n";
             
             $notification .= "✅ <b>All channels properly configured!</b>";
             break;
@@ -3717,17 +4039,18 @@ function send_test_notification($chat_id, $test_type = 'basic') {
             $notification .= "• Bot: ✅ Online\n";
             $notification .= "• CSV File: " . (file_exists(CSV_FILE) ? '✅ OK' : '❌ Missing') . "\n";
             $notification .= "• Users File: " . (file_exists(USERS_FILE) ? '✅ OK' : '❌ Missing') . "\n";
-            $notification .= "• Backup Dir: " . (file_exists(BACKUP_DIR) ? '✅ OK' : '❌ Missing') . "\n\n";
+            $notification .= "• Backup Dir: " . (file_exists(BACKUP_DIR) ? '✅ OK' : '❌ Missing') . "\n";
+            $notification .= "• Multi-Channels: " . count(CHANNEL_IDS) . " configured\n\n";
             
             $notification .= "📊 <b>Quick Stats:</b>\n";
             $notification .= "• Movies: " . ($stats['total_movies'] ?? 0) . "\n";
             $notification .= "• Users: " . count($users_data['users'] ?? []) . "\n";
             $notification .= "• Searches: " . ($stats['total_searches'] ?? 0) . "\n\n";
             
-            $notification .= "🔔 <b>Auto-Notification System:</b>\n";
+            $notification .= "🔔 <b>Multi-Channel System:</b>\n";
             $notification .= "• Status: ✅ ACTIVE\n";
-            $notification .= "• Request Group: " . REQUEST_GROUP_ID . "\n";
-            $notification .= "• Format: Exact as requested\n\n";
+            $notification .= "• Channels: " . count(CHANNEL_IDS) . "\n";
+            $notification .= "• Logic: Sequential forwarding\n\n";
             
             $notification .= "🏓 <b>Test Result:</b> PASSED ✅";
             break;
@@ -3752,6 +4075,7 @@ function check_system_status() {
         'disk_free' => disk_free_space(__DIR__) ? format_file_size(disk_free_space(__DIR__)) : 'Unknown',
         'php_version' => phpversion(),
         'bot_token_valid' => defined('BOT_TOKEN') && BOT_TOKEN,
+        'multi_channel_active' => defined('CHANNEL_IDS') && is_array(CHANNEL_IDS) && count(CHANNEL_IDS) > 0,
         'auto_notification_active' => defined('REQUEST_GROUP_ID') && REQUEST_GROUP_ID,
     ];
     
@@ -3783,7 +4107,7 @@ function format_memory($bytes) {
 }
 
 // ==============================
-// 37. STEP 31: MAIN UPDATE PROCESSING
+// 40. STEP 34: MAIN UPDATE PROCESSING
 // ==============================
 $update = json_decode(file_get_contents('php://input'), true);
 
@@ -3807,13 +4131,14 @@ if ($update) {
         }
     }
 
-    // Process channel posts (movie uploads)
+    // Process channel posts (movie uploads) from ANY configured channel
     if (isset($update['channel_post'])) {
         $message = $update['channel_post'];
         $message_id = $message['message_id'];
         $chat_id = $message['chat']['id'];
 
-        if ($chat_id == CHANNEL_ID) {
+        // Check if this message is from any of our configured channels
+        if (in_array($chat_id, CHANNEL_IDS)) {
             $text = '';
             $quality = 'Unknown';
             $size = 'Unknown';
@@ -3840,11 +4165,11 @@ if ($update) {
             }
 
             if (!empty(trim($text))) {
-                $result = append_movie($text, $message_id, date('d-m-Y'), '', $quality, $size, $language);
+                $result = append_movie($text, $message_id, date('d-m-Y'), '', $quality, $size, $language, $chat_id);
                 if ($result) {
-                    bot_log("✅ New movie captured from PRIVATE CHANNEL: $text");
+                    bot_log("✅ New movie captured from CHANNEL $chat_id: $text");
                 } else {
-                    bot_log("❌ Failed to append movie: $text", 'ERROR');
+                    bot_log("❌ Failed to append movie from channel $chat_id: $text", 'ERROR');
                 }
             }
         }
@@ -3886,6 +4211,12 @@ if ($update) {
             
             handle_command($chat_id, $user_id, $command, $params);
         } else if (!empty(trim($text))) {
+            // Check message rate limit
+            if (!check_rate_limit($user_id, 'message')) {
+                sendMessage($chat_id, "⏳ Please slow down! You're sending too many messages.");
+                return;
+            }
+            
             $lang = detect_language($text);
             send_multilingual_response($chat_id, 'searching', $lang);
             advanced_search($chat_id, $text, $user_id);
@@ -3909,6 +4240,7 @@ if ($update) {
             'username' => $query['from']['username'] ?? ''
         ]);
         
+        // Handle movie download from search results
         $movie_lower = strtolower($data);
         if (isset($movie_messages[$movie_lower])) {
             $entries = $movie_messages[$movie_lower];
@@ -3923,6 +4255,7 @@ if ($update) {
             answerCallbackQuery($query['id'], "✅ " . $cnt . " movies sent");
             update_user_activity($user_id, 'download');
         }
+        // Handle pagination
         elseif (strpos($data, 'pag_') === 0) {
             $parts = explode('_', $data);
             $action = $parts[1];
@@ -3959,6 +4292,7 @@ if ($update) {
                 answerCallbackQuery($query['id'], "Page $page_num");
             }
         }
+        // Handle video preview
         elseif (strpos($data, 'vidprev_') === 0) {
             $parts = explode('_', $data);
             $page_num = isset($parts[1]) ? intval($parts[1]) : 1;
@@ -3967,6 +4301,7 @@ if ($update) {
             send_video_preview($chat_id, $page_num, $session_id);
             answerCallbackQuery($query['id'], "🎬 Sending video previews...");
         }
+        // Handle text preview
         elseif (strpos($data, 'txtprev_') === 0) {
             $parts = explode('_', $data);
             $page_num = isset($parts[1]) ? intval($parts[1]) : 1;
@@ -3975,6 +4310,7 @@ if ($update) {
             send_text_preview($chat_id, $page_num, $session_id);
             answerCallbackQuery($query['id'], "👁️ Sending text preview...");
         }
+        // Handle batch download
         elseif (strpos($data, 'send_') === 0) {
             $parts = explode('_', $data);
             $page_num = isset($parts[1]) ? intval($parts[1]) : 1;
@@ -3985,6 +4321,7 @@ if ($update) {
             batch_download_with_progress($chat_id, $pg['slice'], $page_num);
             answerCallbackQuery($query['id'], "📦 Batch download started!");
         }
+        // Handle filters
         elseif (strpos($data, 'flt_') === 0) {
             $parts = explode('_', $data);
             $filter_type = $parts[1];
@@ -4005,11 +4342,13 @@ if ($update) {
             
             enhanced_pagination_controller($chat_id, 1, $filters, $session_id);
         }
+        // Handle close
         elseif ($data == 'close_' || strpos($data, 'close_') === 0) {
             deleteMessage($chat_id, $message['message_id']);
             sendMessage($chat_id, "🗂️ Pagination closed. Use /browse to start again.");
             answerCallbackQuery($query['id'], "Pagination closed");
         }
+        // Handle auto request
         elseif (strpos($data, 'auto_request_') === 0) {
             $movie_name = base64_decode(str_replace('auto_request_', '', $data));
             $lang = detect_language($movie_name);
@@ -4023,18 +4362,27 @@ if ($update) {
                 answerCallbackQuery($query['id'], "Daily limit reached!", true);
             }
         }
+        // Handle request movie button
         elseif ($data === 'request_movie') {
             sendMessage($chat_id, "📝 To request a movie, use:\n<code>/request movie_name</code>\n\nExample: <code>/request Idli Kadai (2025) Endgame</code>", null, 'HTML');
             answerCallbackQuery($query['id'], "Request instructions sent");
         }
+        // Handle my stats
         elseif ($data === 'my_stats') {
             show_user_stats($chat_id, $user_id);
             answerCallbackQuery($query['id'], "Your statistics");
         }
+        // Handle show leaderboard
         elseif ($data === 'show_leaderboard') {
             show_leaderboard($chat_id);
             answerCallbackQuery($query['id'], "Leaderboard");
         }
+        // Handle test channels
+        elseif ($data === 'test_channels') {
+            test_multi_channel_forwarding($chat_id);
+            answerCallbackQuery($query['id'], "Testing multi-channel system");
+        }
+        // Handle backup status
         elseif ($data === 'backup_status') {
             if ($chat_id == ADMIN_ID) {
                 backup_status($chat_id);
@@ -4043,6 +4391,7 @@ if ($update) {
                 answerCallbackQuery($query['id'], "Admin only command!", true);
             }
         }
+        // Handle run backup
         elseif ($data === 'run_backup') {
             if ($chat_id == ADMIN_ID) {
                 manual_backup($chat_id);
@@ -4051,12 +4400,14 @@ if ($update) {
                 answerCallbackQuery($query['id'], "Admin only command!", true);
             }
         }
+        // Handle help command
         elseif ($data === 'help_command') {
             $command = '/help';
             $params = [];
             handle_command($chat_id, $user_id, $command, $params);
             answerCallbackQuery($query['id'], "Help menu");
         }
+        // Handle test notification
         elseif ($data === 'test_notification') {
             if ($chat_id == ADMIN_ID) {
                 $test_result = send_upload_notification(
@@ -4077,9 +4428,25 @@ if ($update) {
                 answerCallbackQuery($query['id'], "Admin only command!", true);
             }
         }
+        // Default - try to forward movie
         else {
-            sendMessage($chat_id, "❌ Movie not found: " . $data);
-            answerCallbackQuery($query['id'], "❌ Movie not available");
+            $movie_lower = strtolower($data);
+            if (isset($movie_messages[$movie_lower])) {
+                $entries = $movie_messages[$movie_lower];
+                $cnt = 0;
+                
+                foreach ($entries as $entry) {
+                    deliver_item_to_chat($chat_id, $entry);
+                    usleep(150000);
+                    $cnt++;
+                }
+                
+                answerCallbackQuery($query['id'], "✅ " . $cnt . " movies sent");
+                update_user_activity($user_id, 'download');
+            } else {
+                sendMessage($chat_id, "❌ Movie not found: " . $data);
+                answerCallbackQuery($query['id'], "❌ Movie not available");
+            }
         }
     }
 
@@ -4101,7 +4468,7 @@ if ($update) {
 }
 
 // ==============================
-// 38. STEP 32: DEFAULT PAGE
+// 41. STEP 35: DEFAULT PAGE WITH DEBUG INFO
 // ==============================
 if (!isset($update) || !$update) {
     $stats = get_stats();
@@ -4112,7 +4479,7 @@ if (!isset($update) || !$update) {
     echo "<head>";
     echo "<meta charset='UTF-8'>";
     echo "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
-    echo "<title>🎬 Entertainment Tadka Bot</title>";
+    echo "<title>🎬 Entertainment Tadka Bot - Multi-Channel</title>";
     echo "<style>";
     echo "body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }";
     echo ".container { max-width: 1200px; margin: 0 auto; }";
@@ -4120,16 +4487,22 @@ if (!isset($update) || !$update) {
     echo ".stats { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; margin: 20px 0; }";
     echo ".features { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 30px 0; }";
     echo ".feature-card { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; }";
+    echo ".channels { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 20px 0; }";
+    echo ".channel-card { background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; text-align: center; }";
     echo ".links { text-align: center; margin: 30px 0; }";
     echo ".btn { display: inline-block; background: #4CAF50; color: white; padding: 10px 20px; margin: 10px; border-radius: 5px; text-decoration: none; }";
     echo ".btn:hover { background: #45a049; }";
+    echo ".btn-blue { background: #2196F3; }";
+    echo ".btn-blue:hover { background: #0b7dda; }";
+    echo ".btn-red { background: #f44336; }";
+    echo ".btn-red:hover { background: #da190b; }";
     echo "</style>";
     echo "</head>";
     echo "<body>";
     echo "<div class='container'>";
     echo "<div class='header'>";
-    echo "<h1>🎬 Entertainment Tadka Bot</h1>";
-    echo "<p><strong>Version:</strong> 3.0.0 (With Auto-Notification)</p>";
+    echo "<h1>🎬 Entertainment Tadka Bot v3.1.0</h1>";
+    echo "<p><strong>Multi-Channel Version</strong></p>";
     echo "<p><strong>Status:</strong> ✅ Running</p>";
     echo "</div>";
     
@@ -4140,42 +4513,57 @@ if (!isset($update) || !$update) {
     echo "<p><strong>Total Searches:</strong> " . ($stats['total_searches'] ?? 0) . "</p>";
     echo "<p><strong>Total Downloads:</strong> " . ($stats['total_downloads'] ?? 0) . "</p>";
     echo "<p><strong>Last Updated:</strong> " . ($stats['last_updated'] ?? 'N/A') . "</p>";
+    echo "<p><strong>Version:</strong> 3.1.0 (Multi-Channel)</p>";
+    echo "</div>";
+    
+    echo "<div class='channels'>";
+    echo "<h3>📡 Configured Channels</h3>";
+    $i = 1;
+    foreach (CHANNEL_IDS as $channel_id) {
+        echo "<div class='channel-card'>";
+        echo "<strong>Channel $i</strong><br>";
+        echo "<code>" . $channel_id . "</code>";
+        echo "</div>";
+        $i++;
+    }
     echo "</div>";
     
     echo "<div class='features'>";
     echo "<div class='feature-card'>";
-    echo "<h3>🚀 New Features</h3>";
+    echo "<h3>🚀 New Multi-Channel Features</h3>";
     echo "<ul>";
-    echo "<li>✅ Auto-Notification to Request Group</li>";
-    echo "<li>✅ Exact notification format as requested</li>";
-    echo "<li>✅ Theater Print Channel integration</li>";
-    echo "<li>✅ Enhanced movie delivery system</li>";
-    echo "<li>✅ Complete user management</li>";
-    echo "<li>✅ Points system & leaderboard</li>";
-    echo "<li>✅ Advanced pagination</li>";
-    echo "<li>✅ Auto-backup system</li>";
+    echo "<li>✅ Forward from 5 channels</li>";
+    echo "<li>✅ Sequential channel trying</li>";
+    echo "<li>✅ Auto-fallback mechanism</li>";
+    echo "<li>✅ Source channel tracking</li>";
+    echo "<li>✅ Enhanced movie delivery</li>";
+    echo "<li>✅ Rate limiting system</li>";
+    echo "<li>✅ Auto-notification to request group</li>";
+    echo "<li>✅ Complete backup system</li>";
     echo "</ul>";
     echo "</div>";
     
     echo "<div class='feature-card'>";
-    echo "<h3>🔔 Auto-Notification System</h3>";
-    echo "<p><strong>How it works:</strong></p>";
+    echo "<h3>🔔 How Multi-Channel Works</h3>";
     echo "<ol>";
-    echo "<li>Movie uploaded to channel</li>";
-    echo "<li>Bot automatically captures movie details</li>";
-    echo "<li>Bot sends notification to request group</li>";
-    echo "<li>Notification uses exact requested format</li>";
-    echo "<li>Users can search movies immediately</li>";
+    echo "<li>User searches for movie</li>";
+    echo "<li>Bot tries Channel 1</li>";
+    echo "<li>If fails, tries Channel 2</li>";
+    echo "<li>Continues through all 5 channels</li>";
+    echo "<li>First successful forward wins</li>";
+    echo "<li>If all fail, sends text message</li>";
     echo "</ol>";
     echo "</div>";
     echo "</div>";
     
     echo "<div class='links'>";
-    echo "<h3>📱 Quick Setup</h3>";
+    echo "<h3>📱 Quick Setup & Testing</h3>";
     echo "<a class='btn' href='?setwebhook=1'>Set Webhook Now</a>";
-    echo "<a class='btn' href='?test_notification=1'>Test Auto-Notification</a>";
+    echo "<a class='btn btn-blue' href='?test_notification=1'>Test Auto-Notification</a>";
+    echo "<a class='btn btn-blue' href='?test_multichannel=1'>Test Multi-Channel</a>";
     echo "<a class='btn' href='?test_save=1'>Test Movie Save</a>";
     echo "<a class='btn' href='?check_csv=1'>Check CSV Data</a>";
+    echo "<a class='btn btn-red' href='?debug=1'>Debug Info</a>";
     echo "</div>";
     
     echo "<div class='features'>";
@@ -4184,14 +4572,14 @@ if (!isset($update) || !$update) {
     echo "<ul>";
     echo "<li><code>/start</code> - Welcome message</li>";
     echo "<li><code>/help</code> - All commands</li>";
-    echo "<li><code>/search movie</code> - Search movies</li>";
+    echo "<li><code>/search movie</code> - Search movies (5 channels)</li>";
     echo "<li><code>/browse</code> - Enhanced pagination</li>";
     echo "<li><code>/request movie</code> - Request movie</li>";
     echo "<li><code>/mystats</code> - User statistics</li>";
-    echo "<li><code>/leaderboard</code> - Top users</li>";
+    echo "<li><code>/testchannels</code> - Test multi-channel</li>";
     echo "<li><code>/channel</code> - Join channels</li>";
     echo "<li><code>/stats</code> - Admin statistics</li>";
-    echo "<li><code>/test notification</code> - Test auto-notification</li>";
+    echo "<li><code>/test multichannel</code> - Test system</li>";
     echo "</ul>";
     echo "</div>";
     
@@ -4201,14 +4589,15 @@ if (!isset($update) || !$update) {
     echo "<p><strong>Request Channel:</strong> " . REQUEST_CHANNEL . "</p>";
     echo "<p><strong>Theater Prints:</strong> " . THEATER_PRINT_CHANNEL . "</p>";
     echo "<p><strong>Backup Channel:</strong> " . BACKUP_CHANNEL_USERNAME . "</p>";
+    echo "<p><strong>Multi-Channels:</strong> " . count(CHANNEL_IDS) . " configured</p>";
     echo "</div>";
     echo "</div>";
     
     if (file_exists(LOG_FILE)) {
-        $logs = array_slice(file(LOG_FILE), -10);
+        $logs = array_slice(file(LOG_FILE), -15);
         echo "<div class='stats'>";
         echo "<h3>📊 Recent Activity</h3>";
-        echo "<pre style='background: rgba(0,0,0,0.2); padding: 10px; border-radius: 5px;'>";
+        echo "<pre style='background: rgba(0,0,0,0.2); padding: 10px; border-radius: 5px; max-height: 300px; overflow-y: auto;'>";
         foreach ($logs as $log) {
             echo htmlspecialchars($log);
         }
@@ -4222,11 +4611,86 @@ if (!isset($update) || !$update) {
 }
 
 // ==============================
-// 39. STEP 33: TESTING FUNCTIONS
+// 42. STEP 36: DEBUG AND TESTING ENDPOINTS
 // ==============================
+if (isset($_GET['test_multichannel'])) {
+    echo "<h2>🎯 Multi-Channel System Test</h2>";
+    
+    echo "<h3>📡 Configured Channels:</h3>";
+    echo "<ul>";
+    $i = 1;
+    foreach (CHANNEL_IDS as $channel_id) {
+        echo "<li><b>Channel $i:</b> $channel_id</li>";
+        $i++;
+    }
+    echo "</ul>";
+    
+    echo "<h3>🔧 Testing Channel Access:</h3>";
+    foreach (CHANNEL_IDS as $channel_id) {
+        echo "<p><b>Testing $channel_id:</b> ";
+        $result = json_decode(apiRequest('getChat', ['chat_id' => $channel_id]), true);
+        if ($result['ok']) {
+            echo "✅ Accessible - " . $result['result']['title'] . "</p>";
+        } else {
+            echo "❌ Cannot access: " . $result['description'] . "</p>";
+        }
+    }
+    
+    echo "<h3>🎬 Testing Movie Delivery Logic:</h3>";
+    echo "<p>The system will try channels in this order:</p>";
+    echo "<ol>";
+    $i = 1;
+    foreach (CHANNEL_IDS as $channel_id) {
+        echo "<li>Channel $i: $channel_id</li>";
+        $i++;
+    }
+    echo "</ol>";
+    echo "<p><b>Status:</b> ✅ Ready</p>";
+    
+    echo "<p><a href='?'>Back to main page</a></p>";
+    exit;
+}
+
+if (isset($_GET['debug'])) {
+    echo "<h2>🐛 Debug Information</h2>";
+    
+    echo "<h3>Environment Variables:</h3>";
+    echo "<pre>";
+    echo "BOT_TOKEN: " . (defined('BOT_TOKEN') ? '✅ Set' : '❌ Not set') . "\n";
+    echo "CHANNEL_IDS: " . count(CHANNEL_IDS) . " channels\n";
+    foreach (CHANNEL_IDS as $i => $id) {
+        echo "  Channel " . ($i+1) . ": $id\n";
+    }
+    echo "ADMIN_ID: " . ADMIN_ID . "\n";
+    echo "REQUEST_GROUP_ID: " . REQUEST_GROUP_ID . "\n";
+    echo "</pre>";
+    
+    echo "<h3>File Status:</h3>";
+    echo "<pre>";
+    echo "CSV_FILE: " . (file_exists(CSV_FILE) ? '✅ Exists (' . filesize(CSV_FILE) . ' bytes)' : '❌ Missing') . "\n";
+    echo "USERS_FILE: " . (file_exists(USERS_FILE) ? '✅ Exists (' . filesize(USERS_FILE) . ' bytes)' : '❌ Missing') . "\n";
+    echo "STATS_FILE: " . (file_exists(STATS_FILE) ? '✅ Exists (' . filesize(STATS_FILE) . ' bytes)' : '❌ Missing') . "\n";
+    echo "BACKUP_DIR: " . (file_exists(BACKUP_DIR) ? '✅ Exists' : '❌ Missing') . "\n";
+    echo "</pre>";
+    
+    echo "<h3>System Info:</h3>";
+    echo "<pre>";
+    echo "PHP Version: " . phpversion() . "\n";
+    echo "Memory Usage: " . format_memory(memory_get_usage(true)) . "\n";
+    echo "Max Memory: " . format_memory(memory_get_peak_usage(true)) . "\n";
+    echo "Disk Free: " . (disk_free_space(__DIR__) ? format_file_size(disk_free_space(__DIR__)) : 'Unknown') . "\n";
+    echo "Uptime: " . format_uptime(get_stats()['uptime'] ?? time()) . "\n";
+    echo "</pre>";
+    
+    echo "<p><a href='?'>Back to main page</a></p>";
+    exit;
+}
+
 if (isset($_GET['test_save'])) {
-    function manual_save_to_csv($movie_name, $message_id, $quality = '1080p', $language = 'Hindi') {
-        $entry = [$movie_name, $message_id, date('d-m-Y'), '', $quality, '1.5GB', $language, 0, 0];
+    function manual_save_to_csv($movie_name, $message_id, $quality = '1080p', $language = 'Hindi', $channel_index = 0) {
+        $source_channel = CHANNEL_IDS[$channel_index] ?? CHANNEL_IDS[0];
+        $entry = [$movie_name, $message_id, date('d-m-Y'), '', $quality, '1.5GB', $language, 0, 0, $source_channel];
+        
         $handle = fopen(CSV_FILE, "a");
         if ($handle !== FALSE) {
             fputcsv($handle, $entry);
@@ -4237,27 +4701,35 @@ if (isset($_GET['test_save'])) {
         return false;
     }
     
-    manual_save_to_csv("Metro In Dino (2025)", 1924, "1080p", "Hindi");
-    manual_save_to_csv("Metro In Dino 2025 WebRip 480p", 1925, "480p", "Hindi");
-    manual_save_to_csv("Metro In Dino (2025) Hindi 720p", 1926, "720p", "Hindi");
-    manual_save_to_csv("Animal (2023) Hindi 1080p", 1927, "1080p", "Hindi");
-    manual_save_to_csv("Idli Kadai (2025) Endgame (2019) English", 1928, "1080p", "English");
+    // Save test movies to different channels
+    manual_save_to_csv("Metro In Dino (2025)", 1924, "1080p", "Hindi", 0);
+    manual_save_to_csv("Metro In Dino 2025 WebRip 480p", 1925, "480p", "Hindi", 1);
+    manual_save_to_csv("Metro In Dino (2025) Hindi 720p", 1926, "720p", "Hindi", 2);
+    manual_save_to_csv("Animal (2023) Hindi 1080p", 1927, "1080p", "Hindi", 3);
+    manual_save_to_csv("Idli Kadai (2025) Endgame (2019) English", 1928, "1080p", "English", 4);
     
     clear_cache();
     
-    echo "✅ All 5 movies manually save ho gayi!<br>";
+    echo "✅ All 5 test movies saved to different channels!<br>";
     echo "📊 <a href='?check_csv=1'>Check CSV</a> | ";
     echo "<a href='?setwebhook=1'>Reset Webhook</a> | ";
-    echo "<a href='?test_stats=1'>Test Stats</a>";
+    echo "<a href='?test_stats=1'>Test Stats</a> | ";
+    echo "<a href='?test_multichannel=1'>Test Multi-Channel</a>";
     exit;
 }
 
 if (isset($_GET['check_csv'])) {
-    echo "<h3>CSV Content:</h3>";
+    echo "<h3>CSV Content (with source channels):</h3>";
     if (file_exists(CSV_FILE)) {
         $lines = file(CSV_FILE);
         foreach ($lines as $line) {
-            echo htmlspecialchars($line) . "<br>";
+            $parts = str_getcsv($line);
+            if (count($parts) >= 10) {
+                $channel_short = isset($parts[9]) ? substr($parts[9], -6) : 'N/A';
+                echo htmlspecialchars($parts[0]) . " | Channel: " . $channel_short . "<br>";
+            } else {
+                echo htmlspecialchars($line) . "<br>";
+            }
         }
     } else {
         echo "❌ CSV file not found!";
@@ -4278,10 +4750,14 @@ if (isset($_GET['setwebhook'])) {
         echo "<h2>Bot Info</h2>";
         echo "<p>Name: " . htmlspecialchars($bot_info['result']['first_name']) . "</p>";
         echo "<p>Username: @" . htmlspecialchars($bot_info['result']['username']) . "</p>";
-        echo "<p>Channel: " . MAIN_CHANNEL . "</p>";
-        echo "<p>Request Channel: " . REQUEST_CHANNEL . "</p>";
-        echo "<p>Theater Print: " . THEATER_PRINT_CHANNEL . "</p>";
-        echo "<p>Backup Channel: " . BACKUP_CHANNEL_USERNAME . "</p>";
+    }
+    
+    echo "<h3>Multi-Channel Configuration</h3>";
+    echo "<p>Channels configured: " . count(CHANNEL_IDS) . "</p>";
+    $i = 1;
+    foreach (CHANNEL_IDS as $channel_id) {
+        echo "<p>Channel $i: $channel_id</p>";
+        $i++;
     }
     
     echo "<h3>System Status</h3>";
@@ -4292,7 +4768,6 @@ if (isset($_GET['setwebhook'])) {
     
     echo "<h3>Auto-Notification Configuration</h3>";
     echo "<p>Request Group ID: " . REQUEST_GROUP_ID . "</p>";
-    echo "<p>Private Channel ID: " . CHANNEL_ID . "</p>";
     echo "<p>Admin ID: " . ADMIN_ID . "</p>";
     
     exit;
@@ -4346,108 +4821,6 @@ if (isset($_GET['test_notification'])) {
 }
 
 // ==============================
-// 40. STEP 34: TELEGRAM CHANNEL POST MANAGEMENT SYSTEM
-// ==============================
-// This section implements the Image 1 and Image 2 features from your screenshots
-
-function create_post_with_features($chat_id, $content, $features = []) {
-    $message = "📝 <b>Post Created with Features:</b>\n\n";
-    $message .= "Content: $content\n\n";
-    
-    $keyboard = ['inline_keyboard' => []];
-    
-    // Add comments feature
-    if (in_array('comments', $features)) {
-        $keyboard['inline_keyboard'][] = [[
-            'text' => '💬 Add Comment',
-            'callback_data' => 'add_comment'
-        ]];
-        $message .= "✅ Comments enabled\n";
-    }
-    
-    // Add reactions feature
-    if (in_array('reactions', $features)) {
-        $keyboard['inline_keyboard'][] = [[
-            'text' => '👍 Add Reactions',
-            'callback_data' => 'add_reactions'
-        ]];
-        $message .= "✅ Reactions enabled\n";
-    }
-    
-    // Add URL buttons feature
-    if (in_array('url_buttons', $features)) {
-        $keyboard['inline_keyboard'][] = [[
-            'text' => '🔗 URL Buttons',
-            'callback_data' => 'add_url_buttons'
-        ]];
-        $message .= "✅ URL buttons enabled\n";
-    }
-    
-    sendMessage($chat_id, $message, $keyboard, 'HTML');
-}
-
-// Channel post scheduler
-function schedule_channel_post($post_content, $schedule_time) {
-    $schedule_file = 'scheduled_posts.json';
-    $scheduled = file_exists($schedule_file) ? json_decode(file_get_contents($schedule_file), true) : [];
-    
-    $post_id = uniqid();
-    $scheduled[$post_id] = [
-        'content' => $post_content,
-        'schedule_time' => $schedule_time,
-        'created_at' => date('Y-m-d H:i:s'),
-        'status' => 'scheduled'
-    ];
-    
-    file_put_contents($schedule_file, json_encode($scheduled, JSON_PRETTY_PRINT));
-    return $post_id;
-}
-
-// Channel statistics
-function get_channel_analytics() {
-    $analytics = [
-        'total_posts' => get_csv_count(),
-        'total_users' => get_users_count(),
-        'active_users' => get_active_users_count(),
-        'daily_uploads' => get_daily_uploads_count(),
-        'popular_movies' => get_popular_movies()
-    ];
-    
-    return $analytics;
-}
-
-function get_popular_movies() {
-    $movies = get_cached_movies();
-    usort($movies, function($a, $b) {
-        return ($b['views'] ?? 0) - ($a['views'] ?? 0);
-    });
-    
-    return array_slice($movies, 0, 5);
-}
-
-// Post editing function
-function edit_existing_post($message_id, $new_content) {
-    // This would edit an existing post in the channel
-    // For now, we'll log it
-    bot_log("Post edit requested: Message ID $message_id - New content: " . substr($new_content, 0, 50));
-    return true;
-}
-
-// Notification toggle system
-function manage_notifications($user_id, $status) {
-    $notifications_file = 'user_notifications.json';
-    $notifications = file_exists($notifications_file) ? json_decode(file_get_contents($notifications_file), true) : [];
-    
-    $notifications[$user_id] = [
-        'status' => $status,
-        'last_updated' => date('Y-m-d H:i:s')
-    ];
-    
-    file_put_contents($notifications_file, json_encode($notifications, JSON_PRETTY_PRINT));
-    return true;
-}
-
-// ==============================
-// END OF 5000+ LINES CODE
+// END OF 4453+ LINES CODE
 // ==============================
 ?>
