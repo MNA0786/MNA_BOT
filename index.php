@@ -346,40 +346,56 @@ function copyMessage($chat_id, $from_chat_id, $message_id) {
 }
 
 // ==============================
-// MOVIE DELIVERY SYSTEM - FORWARDING OFF
+// MOVIE DELIVERY SYSTEM - FIXED FOR FORWARDING
 // ==============================
 function deliver_item_to_chat($chat_id, $item) {
-    // Movie user ko deliver karta hai - FORWARDING OFF, sirf message bhejta hai
+    // Movie user ko deliver karta hai - ACTUAL FORWARDING ENABLED
     
-    // Agar valid message ID hai toh SIRF MESSAGE SEND KARO, FORWARD NAHI
-    if (!empty($item['message_id_raw'])) {
-        // FORWARDING OFF - Sirf message send karo
-        $text = "🎬 <b>" . htmlspecialchars($item['movie_name'] ?? 'Unknown') . "</b>\n";
-        $text .= "📊 Quality: " . htmlspecialchars($item['quality'] ?? 'Unknown') . "\n";
-        $text .= "💾 Size: " . htmlspecialchars($item['size'] ?? 'Unknown') . "\n";
-        $text .= "🗣️ Language: " . htmlspecialchars($item['language'] ?? 'Hindi') . "\n";
-        $text .= "📅 Date: " . htmlspecialchars($item['date'] ?? 'N/A') . "\n";
-        $text .= "📎 Message ID: " . htmlspecialchars($item['message_id_raw'] ?? 'N/A') . "\n\n";
-        $text .= "🔗 Join channel to download: " . MAIN_CHANNEL;
+    // Agar valid message ID hai toh FORWARD KARO channel se
+    if (!empty($item['message_id']) && is_numeric($item['message_id'])) {
+        // Pehle forward try karo
+        $result = json_decode(forwardMessage($chat_id, CHANNEL_ID, $item['message_id']), true);
         
-        sendMessage($chat_id, $text, null, 'HTML');
-        update_stats('total_downloads', 1);
-        bot_log("Movie info sent (NO FORWARDING): {$item['movie_name']} to $chat_id");
-        return true;
+        if ($result && $result['ok']) {
+            update_stats('total_downloads', 1);
+            bot_log("Movie FORWARDED: {$item['movie_name']} to $chat_id");
+            return true;
+        } else {
+            // Forward nahi ho paya toh copy karo
+            copyMessage($chat_id, CHANNEL_ID, $item['message_id']);
+            update_stats('total_downloads', 1);
+            bot_log("Movie COPIED: {$item['movie_name']} to $chat_id");
+            return true;
+        }
+    }
+    
+    // Agar message ID nahi hai ya numeric nahi hai
+    if (!empty($item['message_id_raw'])) {
+        // Raw message ID se try karo
+        $message_id_clean = preg_replace('/[^0-9]/', '', $item['message_id_raw']);
+        if (is_numeric($message_id_clean) && $message_id_clean > 0) {
+            $result = json_decode(forwardMessage($chat_id, CHANNEL_ID, $message_id_clean), true);
+            
+            if ($result && $result['ok']) {
+                update_stats('total_downloads', 1);
+                bot_log("Movie FORWARDED (raw ID): {$item['movie_name']} to $chat_id");
+                return true;
+            }
+        }
     }
 
-    // Agar message ID nahi hai toh basic format mein send karo
+    // Agar koi bhi method kaam na kare toh text info bhejo
     $text = "🎬 <b>" . htmlspecialchars($item['movie_name'] ?? 'Unknown') . "</b>\n";
     $text .= "📊 Quality: " . htmlspecialchars($item['quality'] ?? 'Unknown') . "\n";
     $text .= "💾 Size: " . htmlspecialchars($item['size'] ?? 'Unknown') . "\n";
     $text .= "🗣️ Language: " . htmlspecialchars($item['language'] ?? 'Hindi') . "\n";
     $text .= "📅 Date: " . htmlspecialchars($item['date'] ?? 'N/A') . "\n";
-    $text .= "📎 Ref: " . htmlspecialchars($item['message_id_raw'] ?? 'N/A') . "\n\n";
-    $text .= "🔗 Join channel to download: " . MAIN_CHANNEL;
+    $text .= "📎 Reference: " . htmlspecialchars($item['message_id_raw'] ?? 'N/A') . "\n\n";
+    $text .= "⚠️ Couldn't forward automatically. Please join channel and search manually.";
     
     sendMessage($chat_id, $text, null, 'HTML');
     update_stats('total_downloads', 1);
-    return true;
+    return false;
 }
 
 // ==============================
