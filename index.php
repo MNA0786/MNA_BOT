@@ -35,6 +35,7 @@ define('BACKUP_CHANNEL_USERNAME', getenv('BACKUP_CHANNEL_USERNAME', '@ETBackup')
 define('ADMIN_ID', (int)getenv('ADMIN_ID', '1080317415'));  // Admin user ID
 define('REQUEST_CHANNEL', getenv('REQUEST_CHANNEL', '@EntertainmentTadka7860'));  // Request channel
 define('MAIN_CHANNEL', getenv('MAIN_CHANNEL', '@EntertainmentTadka786'));  // Main channel
+define('THEATER_CHANNEL', getenv('THEATER_CHANNEL', '@threater_print_movies'));  // Theater channel
 
 // File paths - Yeh sab files bot ke saath create hongi
 define('CSV_FILE', 'movies.csv');  // Movies database
@@ -345,39 +346,40 @@ function copyMessage($chat_id, $from_chat_id, $message_id) {
 }
 
 // ==============================
-// MOVIE DELIVERY SYSTEM
+// MOVIE DELIVERY SYSTEM - FORWARDING OFF
 // ==============================
 function deliver_item_to_chat($chat_id, $item) {
-    // Movie user ko deliver karta hai
+    // Movie user ko deliver karta hai - FORWARDING OFF, sirf message bhejta hai
     
-    // Agar valid message ID hai toh forward karo
-    if (!empty($item['message_id']) && is_numeric($item['message_id'])) {
-        // Pehle forward try karo (channel info dikhata hai)
-        $result = json_decode(forwardMessage($chat_id, CHANNEL_ID, $item['message_id']), true);
+    // Agar valid message ID hai toh SIRF MESSAGE SEND KARO, FORWARD NAHI
+    if (!empty($item['message_id_raw'])) {
+        // FORWARDING OFF - Sirf message send karo
+        $text = "🎬 <b>" . htmlspecialchars($item['movie_name'] ?? 'Unknown') . "</b>\n";
+        $text .= "📊 Quality: " . htmlspecialchars($item['quality'] ?? 'Unknown') . "\n";
+        $text .= "💾 Size: " . htmlspecialchars($item['size'] ?? 'Unknown') . "\n";
+        $text .= "🗣️ Language: " . htmlspecialchars($item['language'] ?? 'Hindi') . "\n";
+        $text .= "📅 Date: " . htmlspecialchars($item['date'] ?? 'N/A') . "\n";
+        $text .= "📎 Message ID: " . htmlspecialchars($item['message_id_raw'] ?? 'N/A') . "\n\n";
+        $text .= "🔗 Join channel to download: " . MAIN_CHANNEL;
         
-        if ($result && $result['ok']) {
-            update_stats('total_downloads', 1);  // Statistics update
-            bot_log("Movie forwarded: {$item['movie_name']} to $chat_id");
-            return true;
-        } else {
-            // Forward nahi ho paya toh copy karo
-            copyMessage($chat_id, CHANNEL_ID, $item['message_id']);
-            update_stats('total_downloads', 1);
-            bot_log("Movie copied: {$item['movie_name']} to $chat_id");
-            return true;
-        }
+        sendMessage($chat_id, $text, null, 'HTML');
+        update_stats('total_downloads', 1);
+        bot_log("Movie info sent (NO FORWARDING): {$item['movie_name']} to $chat_id");
+        return true;
     }
 
-    // Agar message ID nahi hai toh text format mein send karo
-    $text = "🎬 <b>" . ($item['movie_name'] ?? 'Unknown') . "</b>\n";
-    $text .= "📊 Quality: " . ($item['quality'] ?? 'Unknown') . "\n";
-    $text .= "💾 Size: " . ($item['size'] ?? 'Unknown') . "\n";
-    $text .= "🗣️ Language: " . ($item['language'] ?? 'Hindi') . "\n";
-    $text .= "📅 Date: " . ($item['date'] ?? 'N/A') . "\n";
-    $text .= "🔗 Ref: " . ($item['message_id_raw'] ?? 'N/A');
+    // Agar message ID nahi hai toh basic format mein send karo
+    $text = "🎬 <b>" . htmlspecialchars($item['movie_name'] ?? 'Unknown') . "</b>\n";
+    $text .= "📊 Quality: " . htmlspecialchars($item['quality'] ?? 'Unknown') . "\n";
+    $text .= "💾 Size: " . htmlspecialchars($item['size'] ?? 'Unknown') . "\n";
+    $text .= "🗣️ Language: " . htmlspecialchars($item['language'] ?? 'Hindi') . "\n";
+    $text .= "📅 Date: " . htmlspecialchars($item['date'] ?? 'N/A') . "\n";
+    $text .= "📎 Ref: " . htmlspecialchars($item['message_id_raw'] ?? 'N/A') . "\n\n";
+    $text .= "🔗 Join channel to download: " . MAIN_CHANNEL;
     
     sendMessage($chat_id, $text, null, 'HTML');
-    return false;
+    update_stats('total_downloads', 1);
+    return true;
 }
 
 // ==============================
@@ -550,7 +552,7 @@ function send_multilingual_response($chat_id, $message_type, $language) {
     $responses = [
         'hindi' => [
             'welcome' => "🎬 Boss, kis movie ki talash hai?",
-            'found' => "✅ Mil gayi! Movie forward ho rahi hai...",
+            'found' => "✅ Mil gayi! Movie info bhej raha hoon...",
             'not_found' => "😔 Yeh movie abhi available nahi hai!\n\n📝 Aap ise request kar sakte hain: " . REQUEST_CHANNEL . "\n\n🔔 Jab bhi yeh add hogi, main automatically bhej dunga!",
             'searching' => "🔍 Dhoondh raha hoon... Zara wait karo",
             'multiple_found' => "🎯 Kai versions mili hain! Aap konsi chahte hain?",
@@ -559,7 +561,7 @@ function send_multilingual_response($chat_id, $message_type, $language) {
         ],
         'english' => [
             'welcome' => "🎬 Boss, which movie are you looking for?",
-            'found' => "✅ Found it! Forwarding the movie...",
+            'found' => "✅ Found it! Sending movie info...",
             'not_found' => "😔 This movie isn't available yet!\n\n📝 You can request it here: " . REQUEST_CHANNEL . "\n\n🔔 I'll send it automatically once it's added!",
             'searching' => "🔍 Searching... Please wait",
             'multiple_found' => "🎯 Multiple versions found! Which one do you want?",
@@ -660,7 +662,7 @@ function advanced_search($chat_id, $query, $user_id = null) {
             'callback_data' => 'request_movie'
         ]];
         
-        sendMessage($chat_id, "🚀 Top matches (click to download):", $keyboard);
+        sendMessage($chat_id, "🚀 Top matches (click for info):", $keyboard);
         
         if ($user_id) {
             update_user_activity($user_id, 'found_movie');
@@ -1014,7 +1016,7 @@ function batch_download_with_progress($chat_id, $movies, $page_num) {
     $total = count($movies);
     if ($total === 0) return;
     
-    $progress_msg = sendMessage($chat_id, "📦 <b>Batch Download Started</b>\n\nPage: {$page_num}\nTotal: {$total} movies\n\n⏳ Initializing...");
+    $progress_msg = sendMessage($chat_id, "📦 <b>Batch Info Started</b>\n\nPage: {$page_num}\nTotal: {$total} movies\n\n⏳ Initializing...");
     $progress_id = $progress_msg['result']['message_id'];
     
     $success = 0;
@@ -1027,7 +1029,7 @@ function batch_download_with_progress($chat_id, $movies, $page_num) {
         if ($i % 2 == 0) {
             $progress = round(($i / $total) * 100);
             editMessage($chat_id, $progress_id, 
-                "📦 <b>Downloading Page {$page_num}</b>\n\n" .
+                "📦 <b>Sending Page {$page_num} Info</b>\n\n" .
                 "Progress: {$progress}%\n" .
                 "Processed: {$i}/{$total}\n" .
                 "✅ Success: {$success}\n" .
@@ -1052,13 +1054,14 @@ function batch_download_with_progress($chat_id, $movies, $page_num) {
     
     // Final update
     editMessage($chat_id, $progress_id,
-        "✅ <b>Batch Download Complete</b>\n\n" .
+        "✅ <b>Batch Info Complete</b>\n\n" .
         "📄 Page: {$page_num}\n" .
         "🎬 Total: {$total} movies\n" .
         "✅ Successfully sent: {$success}\n" .
         "❌ Failed: {$failed}\n\n" .
         "📊 Success rate: " . round(($success / $total) * 100, 2) . "%\n" .
-        "⏱️ Time: " . date('H:i:s')
+        "⏱️ Time: " . date('H:i:s') . "\n\n" .
+        "🔗 Join channel to download: " . MAIN_CHANNEL
     );
 }
 
@@ -1718,6 +1721,11 @@ function show_channel_info($chat_id) {
     $message .= "• Feature suggestions\n";
     $message .= "• Support & help\n\n";
     
+    $message .= "🎭 <b>Theater Prints:</b> " . THEATER_CHANNEL . "\n";
+    $message .= "• Theater quality prints\n";
+    $message .= "• HD screen recordings\n";
+    $message .= "• Latest theater prints\n\n";
+    
     $message .= "🔒 <b>Backup Channel:</b> " . BACKUP_CHANNEL_USERNAME . "\n";
     $message .= "• Secure data backups\n";
     $message .= "• System archives\n";
@@ -1733,6 +1741,7 @@ function show_channel_info($chat_id) {
                 ['text' => '📥 ' . REQUEST_CHANNEL, 'url' => 'https://t.me/EntertainmentTadka7860']
             ],
             [
+                ['text' => '🎭 ' . THEATER_CHANNEL, 'url' => 'https://t.me/threater_print_movies'],
                 ['text' => '🔒 ' . BACKUP_CHANNEL_USERNAME, 'url' => 'https://t.me/ETBackup']
             ]
         ]
@@ -1795,13 +1804,50 @@ function show_request_channel_info($chat_id) {
     $message .= "• Use correct movie name\n";
     $message .= "• Be patient for uploads\n\n";
     
-    $message .= "🚀 <b>We fulfill most requests within 24 hours!</b>";
+    $message .= "🔔 <b>Auto-notification:</b> You'll get notified when requested movies are added!";
 
     $keyboard = [
         'inline_keyboard' => [
             [
                 ['text' => '📥 Join Requests Channel', 'url' => 'https://t.me/EntertainmentTadka7860'],
                 ['text' => '🎬 Request via Bot', 'callback_data' => 'request_help']
+            ]
+        ]
+    ];
+    
+    sendMessage($chat_id, $message, $keyboard, 'HTML');
+}
+
+function show_theater_channel_info($chat_id) {
+    // Theater channel ka detailed information
+    $message = "🎭 <b>Theater Prints - " . THEATER_CHANNEL . "</b>\n\n";
+    
+    $message .= "🎥 <b>What you get:</b>\n";
+    $message .= "• Latest theater prints\n";
+    $message .= "• HD screen recordings\n";
+    $message .= "• Best quality available\n";
+    $message .= "• Fast uploads after release\n";
+    $message .= "• Multiple quality options\n\n";
+    
+    $message .= "⭐ <b>Features:</b>\n";
+    $message .= "• 1080p theater prints\n";
+    $message .= "• Clear audio quality\n";
+    $message .= "• No watermarks\n";
+    $message .= "• Multiple languages\n\n";
+    
+    $message .= "📥 <b>How to access:</b>\n";
+    $message .= "1. Join " . THEATER_CHANNEL . "\n";
+    $message .= "2. Search in bot\n";
+    $message .= "3. Get message IDs\n";
+    $message .= "4. Download from channel\n\n";
+    
+    $message .= "🎬 <b>For the best viewing experience!</b>";
+
+    $keyboard = [
+        'inline_keyboard' => [
+            [
+                ['text' => '🎭 Join Theater Channel', 'url' => 'https://t.me/threater_print_movies'],
+                ['text' => '🔍 Search Theater Movies', 'callback_data' => 'search_theater']
             ]
         ]
     ];
@@ -2063,7 +2109,7 @@ function show_latest_movies($chat_id, $limit = 10) {
     $keyboard = [
         'inline_keyboard' => [
             [
-                ['text' => '📥 Download All Latest', 'callback_data' => 'download_latest'],
+                ['text' => '📥 Get All Latest Info', 'callback_data' => 'download_latest'],
                 ['text' => '📊 Browse All', 'callback_data' => 'browse_all']
             ]
         ]
@@ -2130,7 +2176,7 @@ function show_movies_by_quality($chat_id, $quality) {
     $keyboard = [
         'inline_keyboard' => [
             [
-                ['text' => '📥 Download All', 'callback_data' => 'download_quality_' . $quality],
+                ['text' => '📥 Get All Info', 'callback_data' => 'download_quality_' . $quality],
                 ['text' => '🔄 Other Qualities', 'callback_data' => 'show_qualities']
             ]
         ]
@@ -2168,7 +2214,7 @@ function show_movies_by_language($chat_id, $language) {
     $keyboard = [
         'inline_keyboard' => [
             [
-                ['text' => '📥 Download All', 'callback_data' => 'download_lang_' . $language],
+                ['text' => '📥 Get All Info', 'callback_data' => 'download_lang_' . $language],
                 ['text' => '🔄 Other Languages', 'callback_data' => 'show_languages']
             ]
         ]
@@ -2580,7 +2626,8 @@ function show_bot_info($chat_id) {
     
     $message .= "📢 <b>Channels:</b>\n";
     $message .= "• Main: " . MAIN_CHANNEL . "\n";
-    $message .= "• Support: " . REQUEST_CHANNEL;
+    $message .= "• Support: " . REQUEST_CHANNEL . "\n";
+    $message .= "• Theater: " . THEATER_CHANNEL;
     
     sendMessage($chat_id, $message, null, 'HTML');
 }
@@ -2761,10 +2808,12 @@ function is_valid_movie_query($text) {
 }
 
 // ==============================
-// MOVIE APPEND FUNCTION
+// MOVIE APPEND FUNCTION WITH AUTO-NOTIFICATION
 // ==============================
 function append_movie($movie_name, $message_id_raw, $date = null, $video_path = '', $quality = 'Unknown', $size = 'Unknown', $language = 'Hindi') {
     // Movie database mein add karta hai
+    global $movie_messages, $movie_cache, $waiting_users;
+    
     if (empty(trim($movie_name))) return;
     
     if ($date === null) $date = date('d-m-Y');
@@ -2774,7 +2823,6 @@ function append_movie($movie_name, $message_id_raw, $date = null, $video_path = 
     fputcsv($handle, $entry);
     fclose($handle);
 
-    global $movie_messages, $movie_cache, $waiting_users;
     $movie = strtolower(trim($movie_name));
     $item = [
         'movie_name' => $movie_name,
@@ -2791,16 +2839,26 @@ function append_movie($movie_name, $message_id_raw, $date = null, $video_path = 
     $movie_messages[$movie][] = $item;
     $movie_cache = [];
 
-    // Waiting users ko notify karo
-    foreach ($waiting_users as $query => $users) {
-        if (strpos($movie, $query) !== false) {
-            foreach ($users as $user_data) {
-                list($user_chat_id, $user_id) = $user_data;
-                deliver_item_to_chat($user_chat_id, $item);
-                sendMessage($user_chat_id, "✅ '$query' ab channel me add ho gaya!");
-            }
-            unset($waiting_users[$query]);
+    // Auto-notification to request channel
+    $movie_lower = strtolower($movie_name);
+    if (!empty($waiting_users[$movie_lower])) {
+        $notification_msg = "🔔 <b>Movie Added!</b>\n\n";
+        $notification_msg .= "🎬 <b>$movie_name</b> has been added to our collection!\n\n";
+        $notification_msg .= "📢 Join: " . MAIN_CHANNEL . " to download\n";
+        $notification_msg .= "🔔 " . count($waiting_users[$movie_lower]) . " users were waiting for this movie!\n\n";
+        $notification_msg .= "📅 Added: " . $date . "\n";
+        $notification_msg .= "📊 Quality: " . $quality . "\n";
+        $notification_msg .= "🗣️ Language: " . $language;
+        
+        sendMessage('-1003181705395', $notification_msg, null, 'HTML');
+        bot_log("Auto-notification sent for: $movie_name to " . count($waiting_users[$movie_lower]) . " users");
+        
+        // Waiting users ko notify karo
+        foreach ($waiting_users[$movie_lower] as $user_data) {
+            list($user_chat_id, $user_id) = $user_data;
+            sendMessage($user_chat_id, "🎉 <b>Good News!</b>\n\nYour requested movie <b>$movie_name</b> has been added!\n\nJoin channel to download: " . MAIN_CHANNEL, null, 'HTML');
         }
+        unset($waiting_users[$movie_lower]);
     }
 
     update_stats('total_movies', 1);
@@ -2808,28 +2866,40 @@ function append_movie($movie_name, $message_id_raw, $date = null, $video_path = 
 }
 
 // ==============================
-// COMPLETE COMMAND HANDLER
+// COMPLETE COMMAND HANDLER WITH UPDATED START MESSAGE
 // ==============================
 function handle_command($chat_id, $user_id, $command, $params = []) {
     // Sab commands handle karta hai
     switch ($command) {
         // ==================== CORE COMMANDS ====================
         case '/start':
-            $welcome = "🎬 <b>Welcome to Entertainment Tadka!</b>\n\n";
+            $welcome = "🎬 Welcome to Entertainment Tadka!\n\n";
+            
             $welcome .= "📢 <b>How to use this bot:</b>\n";
             $welcome .= "• Simply type any movie name\n";
             $welcome .= "• Use English or Hindi\n";
             $welcome .= "• Partial names also work\n\n";
+            
             $welcome .= "🔍 <b>Examples:</b>\n";
-            $welcome .= "• kgf\n• pushpa\n• avengers\n• hindi movie\n• spider-man\n\n";
+            $welcome .= "• Mandala Murders 2025\n";
+            $welcome .= "• Lokah Chapter 1 Chandra 2025\n";
+            $welcome .= "• Idli Kadai (2025)\n";
+            $welcome .= "• IT - Welcome to Derry (2025) S01\n";
+            $welcome .= "• hindi movie\n\n";
+            
             $welcome .= "❌ <b>Don't type:</b>\n";
             $welcome .= "• Technical questions\n";
             $welcome .= "• Player instructions\n";
             $welcome .= "• Non-movie queries\n\n";
+            
             $welcome .= "📢 <b>Join Our Channels:</b>\n";
-            $welcome .= "🍿 Main: " . MAIN_CHANNEL . "\n";
-            $welcome .= "📥 Requests: " . REQUEST_CHANNEL . "\n";
-            $welcome .= "🔒 Backup: " . BACKUP_CHANNEL_USERNAME . "\n\n";
+            $welcome .= "🍿 Main: @EntertainmentTadka786\n";
+            $welcome .= "📥 Requests: @EntertainmentTadka7860\n";
+            $welcome .= "🎭 Theater Prints: @threater_print_movies\n";
+            $welcome .= "🔒 Backup: @ETBackup\n\n";
+            
+            $welcome .= "🔔 <b>New Feature:</b> Request group gets auto-notification when movies are uploaded!\n\n";
+            
             $welcome .= "💬 <b>Need help?</b> Use /help for all commands";
 
             $keyboard = [
@@ -2840,10 +2910,10 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
                     ],
                     [
                         ['text' => '📥 Requests', 'url' => 'https://t.me/EntertainmentTadka7860'],
-                        ['text' => '📊 My Stats', 'callback_data' => 'my_stats']
+                        ['text' => '🎭 Theater Prints', 'url' => 'https://t.me/threater_print_movies']
                     ],
                     [
-                        ['text' => '🛡️ Backup', 'url' => 'https://t.me/ETBackup'],
+                        ['text' => '🔒 Backup', 'url' => 'https://t.me/ETBackup'],
                         ['text' => '❓ Help', 'callback_data' => 'help_command']
                     ]
                 ]
@@ -2860,7 +2930,14 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
             $help .= "📢 <b>Our Channels:</b>\n";
             $help .= "🍿 Main: " . MAIN_CHANNEL . " - Latest movies\n";
             $help .= "📥 Requests: " . REQUEST_CHANNEL . " - Support & requests\n";
+            $help .= "🎭 Theater: " . THEATER_CHANNEL . " - HD prints\n";
             $help .= "🔒 Backup: " . BACKUP_CHANNEL_USERNAME . " - Data protection\n\n";
+            
+            $help .= "🔔 <b>Auto-notification Feature:</b>\n";
+            $help .= "• Request a movie in request channel\n";
+            $help .= "• We add it within 24 hours\n";
+            $help .= "• Get auto-notification when added!\n";
+            $help .= "• Join request channel for updates\n\n";
             
             $help .= "🎯 <b>Search Commands:</b>\n";
             $help .= "• Just type movie name - Smart search\n";
@@ -2886,6 +2963,7 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
             $help .= "• <code>/channel</code> - All channels\n";
             $help .= "• <code>/mainchannel</code> - Main channel\n";
             $help .= "• <code>/requestchannel</code> - Requests\n";
+            $help .= "• <code>/theaterchannel</code> - Theater prints\n";
             $help .= "• <code>/backupchannel</code> - Backup info\n\n";
             
             $help .= "💡 <b>Pro Tips:</b>\n";
@@ -2901,7 +2979,10 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
                         ['text' => '📥 ' . REQUEST_CHANNEL, 'url' => 'https://t.me/EntertainmentTadka7860']
                     ],
                     [
-                        ['text' => '🔒 ' . BACKUP_CHANNEL_USERNAME, 'url' => 'https://t.me/ETBackup'],
+                        ['text' => '🎭 ' . THEATER_CHANNEL, 'url' => 'https://t.me/threater_print_movies'],
+                        ['text' => '🔒 ' . BACKUP_CHANNEL_USERNAME, 'url' => 'https://t.me/ETBackup']
+                    ],
+                    [
                         ['text' => '🎬 Search Movies', 'switch_inline_query_current_chat' => '']
                     ]
                 ]
@@ -2952,6 +3033,13 @@ function handle_command($chat_id, $user_id, $command, $params = []) {
         case '/language':
             $language = isset($params[0]) ? $params[0] : 'hindi';
             show_movies_by_language($chat_id, $language);
+            break;
+
+        // ==================== CHANNEL COMMANDS ====================
+        case '/theaterchannel':
+        case '/theater':
+        case '/theaterprints':
+            show_theater_channel_info($chat_id);
             break;
 
         // ==================== REQUEST COMMANDS ====================
@@ -3296,8 +3384,8 @@ if ($update) {
                 $cnt++;
             }
             
-            sendMessage($chat_id, "✅ '$data' ke $cnt messages forward/send ho gaye!\n\n📢 Join our channel: " . MAIN_CHANNEL);
-            answerCallbackQuery($query['id'], "🎬 $cnt items sent!");
+            sendMessage($chat_id, "✅ '$data' ke $cnt items ka info mil gaya!\n\n📢 Join our channel to download: " . MAIN_CHANNEL);
+            answerCallbackQuery($query['id'], "🎬 $cnt items ka info sent!");
             update_user_activity($user_id, 'download');
         }
         // Pagination controls
@@ -3316,7 +3404,7 @@ if ($update) {
             $all = get_all_movies_list();
             $pg = paginate_movies($all, $page);
             batch_download_with_progress($chat_id, $pg['slice'], $page);
-            answerCallbackQuery($query['id'], "Re-sent current page movies");
+            answerCallbackQuery($query['id'], "Re-sent current page movies info");
         }
         elseif (strpos($data, 'tu_info_') === 0) {
             $page = (int)str_replace('tu_info_', '', $data);
@@ -3379,7 +3467,7 @@ if ($update) {
                 answerCallbackQuery($query['id'], "Page $page_num");
             }
         }
-        // Send page batch download
+        // Send page batch info
         elseif (strpos($data, 'send_') === 0) {
             $parts = explode('_', $data);
             $page_num = isset($parts[1]) ? intval($parts[1]) : 1;
@@ -3388,7 +3476,7 @@ if ($update) {
             $all = get_all_movies_list();
             $pg = paginate_movies($all, $page_num, []);
             batch_download_with_progress($chat_id, $pg['slice'], $page_num);
-            answerCallbackQuery($query['id'], "📦 Batch download started!");
+            answerCallbackQuery($query['id'], "📦 Batch info started!");
         }
         // Preview page
         elseif (strpos($data, 'prev_') === 0) {
@@ -3433,6 +3521,11 @@ if ($update) {
             
             totalupload_controller($chat_id, 1, $filters, $session_id);
         }
+        // Theater channel search
+        elseif ($data == 'search_theater') {
+            sendMessage($chat_id, "🎭 <b>Theater Prints Search</b>\n\nType any movie name to search for theater prints!\n\nExample: <code>kgf 2 theater</code>", null, 'HTML');
+            answerCallbackQuery($query['id'], "Search theater movies");
+        }
         // Close pagination
         elseif ($data == 'close_' || strpos($data, 'close_') === 0) {
             deleteMessage($chat_id, $message['message_id']);
@@ -3456,6 +3549,10 @@ if ($update) {
         elseif ($data === 'request_movie') {
             sendMessage($chat_id, "📝 To request a movie, use:\n<code>/request movie_name</code>\n\nExample: <code>/request Avengers Endgame</code>", null, 'HTML');
             answerCallbackQuery($query['id'], "Request instructions sent");
+        }
+        elseif ($data === 'request_help') {
+            show_request_channel_info($chat_id);
+            answerCallbackQuery($query['id'], "Request channel info");
         }
         // User stats
         elseif ($data === 'my_stats') {
@@ -3490,8 +3587,52 @@ if ($update) {
             handle_command($chat_id, $user_id, $command, $params);
             answerCallbackQuery($query['id'], "Help menu");
         }
+        // Other callbacks
+        elseif ($data === 'refresh_stats') {
+            show_user_stats($chat_id, $user_id);
+            answerCallbackQuery($query['id'], "Refreshed");
+        }
+        elseif ($data === 'refresh_leaderboard') {
+            show_leaderboard($chat_id);
+            answerCallbackQuery($query['id'], "Refreshed");
+        }
+        elseif ($data === 'download_latest') {
+            $all = get_all_movies_list();
+            $latest = array_slice($all, -10);
+            $latest = array_reverse($latest);
+            batch_download_with_progress($chat_id, $latest, "latest");
+            answerCallbackQuery($query['id'], "Latest movies info sent");
+        }
+        elseif ($data === 'browse_all') {
+            totalupload_controller($chat_id, 1);
+            answerCallbackQuery($query['id'], "Browse all movies");
+        }
+        elseif (strpos($data, 'download_quality_') === 0) {
+            $quality = str_replace('download_quality_', '', $data);
+            $all = get_all_movies_list();
+            $filtered = [];
+            foreach ($all as $movie) {
+                if (stripos($movie['quality'] ?? '', $quality) !== false) {
+                    $filtered[] = $movie;
+                }
+            }
+            batch_download_with_progress($chat_id, $filtered, $quality . " quality");
+            answerCallbackQuery($query['id'], "$quality movies info sent");
+        }
+        elseif (strpos($data, 'download_lang_') === 0) {
+            $language = str_replace('download_lang_', '', $data);
+            $all = get_all_movies_list();
+            $filtered = [];
+            foreach ($all as $movie) {
+                if (stripos($movie['language'] ?? '', $language) !== false) {
+                    $filtered[] = $movie;
+                }
+            }
+            batch_download_with_progress($chat_id, $filtered, $language . " language");
+            answerCallbackQuery($query['id'], "$language movies info sent");
+        }
         else {
-            sendMessage($chat_id, "❌ Movie not found: " . $data);
+            sendMessage($chat_id, "❌ Movie not found: " . $data . "\n\nTry searching with exact name!");
             answerCallbackQuery($query['id'], "❌ Movie not available");
         }
     }
@@ -3504,12 +3645,6 @@ if ($update) {
     if ($current_hour == AUTO_BACKUP_HOUR && $current_minute == '00') {
         auto_backup();
         bot_log("Daily auto-backup completed");
-    }
-
-    // Daily digest at 8 AM
-    if ($current_hour == '08' && $current_minute == '00') {
-        // send_daily_digest(); // Uncomment if you want daily digest
-        bot_log("Daily digest time reached");
     }
 
     // Hourly cache cleanup
@@ -3598,6 +3733,7 @@ if (php_sapi_name() === 'cli' || isset($_GET['setwebhook'])) {
         echo "<p>Username: @" . htmlspecialchars($bot_info['result']['username']) . "</p>";
         echo "<p>Channel: " . MAIN_CHANNEL . "</p>";
         echo "<p>Request Channel: " . REQUEST_CHANNEL . "</p>";
+        echo "<p>Theater Channel: " . THEATER_CHANNEL . "</p>";
         echo "<p>Backup Channel: " . BACKUP_CHANNEL_USERNAME . "</p>";
     }
     
@@ -3619,6 +3755,7 @@ if (!isset($update) || !$update) {
     echo "<h1>🎬 Entertainment Tadka Bot</h1>";
     echo "<p><strong>Telegram Channel:</strong> " . MAIN_CHANNEL . "</p>";
     echo "<p><strong>Request Channel:</strong> " . REQUEST_CHANNEL . "</p>";
+    echo "<p><strong>Theater Channel:</strong> " . THEATER_CHANNEL . "</p>";
     echo "<p><strong>Backup Channel:</strong> " . BACKUP_CHANNEL_USERNAME . "</p>";
     echo "<p><strong>Status:</strong> ✅ Running</p>";
     echo "<p><strong>Total Movies:</strong> " . ($stats['total_movies'] ?? 0) . "</p>";
@@ -3641,6 +3778,7 @@ if (!isset($update) || !$update) {
     echo "<li><code>/mystats</code> - User statistics</li>";
     echo "<li><code>/leaderboard</code> - Top users</li>";
     echo "<li><code>/channel</code> - Join channels</li>";
+    echo "<li><code>/theaterchannel</code> - Theater prints</li>";
     echo "<li><code>/checkdate</code> - Upload statistics</li>";
     echo "<li><code>/stats</code> - Admin statistics</li>";
     echo "</ul>";
@@ -3658,8 +3796,10 @@ if (!isset($update) || !$update) {
     echo "<li>✅ Detailed statistics and logging</li>";
     echo "<li>✅ Quality and language detection</li>";
     echo "<li>✅ Maintenance mode support</li>";
+    echo "<li>✅ <b>FORWARDING OFF</b> - Only info sent, no forwarding</li>";
     echo "<li>✅ ENHANCED PAGINATION with sessions, filters, previews</li>";
     echo "<li>✅ BATCH DOWNLOAD with progress tracking</li>";
+    echo "<li>✅ AUTO-NOTIFICATION for requested movies</li>";
     echo "</ul>";
     
     echo "<h3>📊 Recent Activity</h3>";
