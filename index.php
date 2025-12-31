@@ -76,6 +76,20 @@ $user_sessions = array();  // User sessions
 $user_pagination_sessions = array();  // Enhanced: Pagination sessions
 
 // ==============================
+// HELPER FUNCTION FOR DIRECT LINKS
+// ==============================
+function get_direct_channel_link($message_id) {
+    // Telegram direct link generate karta hai
+    $channel_id_clean = str_replace('-100', '', CHANNEL_ID);
+    return "https://t.me/c/" . $channel_id_clean . "/" . $message_id;
+}
+
+function get_channel_username_link() {
+    // Channel username se link generate karta hai
+    return "https://t.me/" . ltrim(MAIN_CHANNEL, '@');
+}
+
+// ==============================
 // FILE INITIALIZATION FUNCTION
 // ==============================
 function initialize_files() {
@@ -346,26 +360,29 @@ function copyMessage($chat_id, $from_chat_id, $message_id) {
 }
 
 // ==============================
-// MOVIE DELIVERY SYSTEM - FIXED FOR FORWARDING
+// MOVIE DELIVERY SYSTEM - NO FORWARD HEADERS
 // ==============================
 function deliver_item_to_chat($chat_id, $item) {
-    // Movie user ko deliver karta hai - ACTUAL FORWARDING ENABLED
+    // Movie user ko deliver karta hai - WITHOUT FORWARD HEADERS
     
-    // Agar valid message ID hai toh FORWARD KARO channel se
+    // Agar valid message ID hai toh COPY KARO (forward nahi)
     if (!empty($item['message_id']) && is_numeric($item['message_id'])) {
-        // Pehle forward try karo
-        $result = json_decode(forwardMessage($chat_id, CHANNEL_ID, $item['message_id']), true);
+        // COPY MESSAGE use karo - yeh forward header nahi dikhayega
+        $result = json_decode(copyMessage($chat_id, CHANNEL_ID, $item['message_id']), true);
         
         if ($result && $result['ok']) {
             update_stats('total_downloads', 1);
-            bot_log("Movie FORWARDED: {$item['movie_name']} to $chat_id");
+            bot_log("Movie COPIED (no forward header): {$item['movie_name']} to $chat_id");
             return true;
         } else {
-            // Forward nahi ho paya toh copy karo
-            copyMessage($chat_id, CHANNEL_ID, $item['message_id']);
-            update_stats('total_downloads', 1);
-            bot_log("Movie COPIED: {$item['movie_name']} to $chat_id");
-            return true;
+            // Copy nahi ho paya toh forward try karo as fallback
+            $fallback_result = json_decode(forwardMessage($chat_id, CHANNEL_ID, $item['message_id']), true);
+            
+            if ($fallback_result && $fallback_result['ok']) {
+                update_stats('total_downloads', 1);
+                bot_log("Movie FORWARDED (fallback): {$item['movie_name']} to $chat_id");
+                return true;
+            }
         }
     }
     
@@ -374,24 +391,41 @@ function deliver_item_to_chat($chat_id, $item) {
         // Raw message ID se try karo
         $message_id_clean = preg_replace('/[^0-9]/', '', $item['message_id_raw']);
         if (is_numeric($message_id_clean) && $message_id_clean > 0) {
-            $result = json_decode(forwardMessage($chat_id, CHANNEL_ID, $message_id_clean), true);
+            // Pehle copy try karo
+            $result = json_decode(copyMessage($chat_id, CHANNEL_ID, $message_id_clean), true);
             
             if ($result && $result['ok']) {
                 update_stats('total_downloads', 1);
-                bot_log("Movie FORWARDED (raw ID): {$item['movie_name']} to $chat_id");
+                bot_log("Movie COPIED (raw ID): {$item['movie_name']} to $chat_id");
                 return true;
+            } else {
+                // Fallback to forward
+                $fallback_result = json_decode(forwardMessage($chat_id, CHANNEL_ID, $message_id_clean), true);
+                
+                if ($fallback_result && $fallback_result['ok']) {
+                    update_stats('total_downloads', 1);
+                    bot_log("Movie FORWARDED (raw ID fallback): {$item['movie_name']} to $chat_id");
+                    return true;
+                }
             }
         }
     }
 
-    // Agar koi bhi method kaam na kare toh text info bhejo
+    // Agar koi bhi method kaam na kare toh text info bhejo (NO FORWARD)
     $text = "🎬 <b>" . htmlspecialchars($item['movie_name'] ?? 'Unknown') . "</b>\n";
     $text .= "📊 Quality: " . htmlspecialchars($item['quality'] ?? 'Unknown') . "\n";
     $text .= "💾 Size: " . htmlspecialchars($item['size'] ?? 'Unknown') . "\n";
     $text .= "🗣️ Language: " . htmlspecialchars($item['language'] ?? 'Hindi') . "\n";
     $text .= "📅 Date: " . htmlspecialchars($item['date'] ?? 'N/A') . "\n";
     $text .= "📎 Reference: " . htmlspecialchars($item['message_id_raw'] ?? 'N/A') . "\n\n";
-    $text .= "⚠️ Couldn't forward automatically. Please join channel and search manually.";
+    
+    // Direct link provide karo (forward nahi)
+    if (!empty($item['message_id']) && is_numeric($item['message_id'])) {
+        $channel_id_clean = str_replace('-100', '', CHANNEL_ID);
+        $text .= "🔗 Direct Link: https://t.me/c/" . $channel_id_clean . "/{$item['message_id']}\n\n";
+    }
+    
+    $text .= "⚠️ Join channel to access content: " . MAIN_CHANNEL;
     
     sendMessage($chat_id, $text, null, 'HTML');
     update_stats('total_downloads', 1);
@@ -3812,7 +3846,7 @@ if (!isset($update) || !$update) {
     echo "<li>✅ Detailed statistics and logging</li>";
     echo "<li>✅ Quality and language detection</li>";
     echo "<li>✅ Maintenance mode support</li>";
-    echo "<li>✅ <b>FORWARDING OFF</b> - Only info sent, no forwarding</li>";
+    echo "<li>✅ <b>NO FORWARD HEADERS</b> - Using copyMessage instead of forward</li>";
     echo "<li>✅ ENHANCED PAGINATION with sessions, filters, previews</li>";
     echo "<li>✅ BATCH DOWNLOAD with progress tracking</li>";
     echo "<li>✅ AUTO-NOTIFICATION for requested movies</li>";
