@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: entertainment-tadka-bot
+    env: php
+    buildCommand: "composer install"
+    startCommand: "php -S 0.0.0.0:\$PORT index.php"
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: OWNER_ID
+        value: "1080317415"
