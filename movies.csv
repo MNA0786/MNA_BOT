@@ -1,7 +1,8 @@
 movie-name,message_id,channel_info
-Mandala Murders,4,-1003251791991
-Mandala Murders,5,-1003251791991
-Mandala Murders,6,-1003251791991
+movie_name,message_id,date,quality,size,language,channel_type,channel_id,channel_username
+Mandala Murders,4,,,,,,-1003251791991,
+Mandala Murders,5,,,,,,-1003251791991,
+Mandala Murders,6,,,,,,-1003251791991,
 Zebra 2024,7,-1003251791991
 Zebra 2024,8,-1003251791991
 Zebra 2024,9,-1003251791991
