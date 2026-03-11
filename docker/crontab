@@ -1,8 +1,0 @@
-# Bot Auto Backup
-0 3 * * * root curl http://localhost/?cron=backup\&key=$(date +\%Y-\%m-\%d | md5sum | cut -d' ' -f1) > /dev/null 2>&1
-
-# Cleanup every hour
-30 * * * * root curl http://localhost/?cron=cleanup\&key=$(date +\%Y-\%m-\%d | md5sum | cut -d' ' -f1) > /dev/null 2>&1
-
-# Update stats every 5 minutes
-*/5 * * * * root curl http://localhost/?cron=stats\&key=$(date +\%Y-\%m-\%d | md5sum | cut -d' ' -f1) > /dev/null 2>&1
