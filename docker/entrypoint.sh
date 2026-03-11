@@ -12,6 +12,13 @@ chmod -R 777 /var/www/html/backups
 chmod -R 777 /var/www/html/cache
 chmod -R 777 /var/www/html/logs
 chmod -R 777 /var/www/html/storage
+
+# Create files if not exist
+touch /var/www/html/movies.csv
+touch /var/www/html/users.json
+touch /var/www/html/bot_stats.json
+touch /var/www/html/movie_requests.json
+touch /var/www/html/learning.json
 chmod 666 /var/www/html/*.csv 2>/dev/null || true
 chmod 666 /var/www/html/*.json 2>/dev/null || true
 
@@ -35,12 +42,14 @@ echo "⏰ Starting cron service..."
 service cron start
 
 # Set webhook
-echo "🔗 Setting Telegram webhook..."
-WEBHOOK_URL="${WEBHOOK_URL:-https://${RENDER_EXTERNAL_HOSTNAME}}"
-php -r "
-    \$result = apiRequest('setWebhook', ['url' => '$WEBHOOK_URL']);
-    echo \$result ? '✅ Webhook set successfully\n' : '❌ Failed to set webhook\n';
-"
+if [ ! -z "$WEBHOOK_URL" ]; then
+    echo "🔗 Setting Telegram webhook..."
+    php -r "
+        require 'index.php';
+        \$result = setup_render_webhook();
+        echo \$result ? '✅ Webhook set successfully\n' : '❌ Failed to set webhook\n';
+    "
+fi
 
 echo "✅ Bot is ready! Starting Apache..."
 
