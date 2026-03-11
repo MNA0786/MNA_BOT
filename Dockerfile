@@ -1,4 +1,3 @@
-# Dockerfile
 FROM php:8.2-apache
 
 # Set working directory
@@ -46,8 +45,10 @@ RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 777 /var/www/html/backups \
     && chmod -R 777 /var/www/html/cache \
     && chmod -R 777 /var/www/html/logs \
-    && chmod -R 777 /var/www/html/storage \
-    && touch /var/www/html/movies.csv \
+    && chmod -R 777 /var/www/html/storage
+
+# Create data files
+RUN touch /var/www/html/movies.csv \
     && touch /var/www/html/users.json \
     && touch /var/www/html/bot_stats.json \
     && touch /var/www/html/movie_requests.json \
@@ -58,22 +59,18 @@ RUN chown -R www-data:www-data /var/www/html \
 # Configure Apache
 COPY docker/apache-config.conf /etc/apache2/sites-available/000-default.conf
 
-# Set environment variables
-ENV ENVIRONMENT=production
-ENV PHP_MEMORY_LIMIT=256M
-ENV PHP_MAX_EXECUTION_TIME=300
-
 # Setup cron jobs
 COPY docker/cronjob /etc/cron.d/bot-cron
 RUN chmod 0644 /etc/cron.d/bot-cron \
     && crontab /etc/cron.d/bot-cron \
     && touch /var/log/cron.log
 
+# Copy entrypoint script
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Expose port
 EXPOSE 80
 
 # Start services
-COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
 ENTRYPOINT ["/entrypoint.sh"]
