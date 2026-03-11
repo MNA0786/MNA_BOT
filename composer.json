@@ -1,0 +1,52 @@
+{
+    "name": "entertainment-tadka/telegram-bot",
+    "description": "Entertainment Tadka Telegram Movie Bot - Advanced Multi-Channel System",
+    "type": "project",
+    "version": "3.0.0",
+    "license": "proprietary",
+    "authors": [
+        {
+            "name": "Entertainment Tadka",
+            "email": "admin@entertainmenttadka.com"
+        }
+    ],
+    "require": {
+        "php": ">=8.1",
+        "ext-curl": "*",
+        "ext-json": "*",
+        "ext-zip": "*",
+        "ext-mbstring": "*",
+        "ext-sqlite3": "*",
+        "ext-redis": "*"
+    },
+    "require-dev": {
+        "ext-xdebug": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/",
+            "Database\\": "database/",
+            "Utils\\": "utils/"
+        }
+    },
+    "scripts": {
+        "post-install-cmd": [
+            "@set-permissions"
+        ],
+        "post-update-cmd": [
+            "@set-permissions"
+        ],
+        "set-permissions": [
+            "chmod 666 movies.csv users.json bot_stats.json movie_requests.json bot_activity.log || true",
+            "chmod 777 backups/ logs/ cache/ || true",
+            "chmod 644 index.php .htaccess || true"
+        ]
+    },
+    "config": {
+        "platform-check": false,
+        "optimize-autoloader": true,
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

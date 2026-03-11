@@ -1,0 +1,108 @@
+# ==============================
+# RENDER.COM CONFIGURATION
+# ==============================
+services:
+  - type: web
+    name: entertainment-tadka-bot
+    runtime: docker
+    repo: https://github.com/yourusername/entertainment-tadka-bot
+    branch: main
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    
+    envVars:
+      # Bot Configuration
+      - key: BOT_TOKEN
+        sync: false  # Set in Render Dashboard
+      - key: ADMIN_ID
+        value: 1080317415
+      
+      # Channel IDs
+      - key: MAIN_CHANNEL_ID
+        value: "-1003181705395"
+      - key: THEATER_CHANNEL_ID
+        value: "-1002831605258"
+      - key: BACKUP_CHANNEL_ID
+        value: "-1002964109368"
+      - key: REQUEST_CHANNEL_ID
+        value: "-1003083386043"
+      
+      # Channel Usernames
+      - key: MAIN_CHANNEL
+        value: "@EntertainmentTadka786"
+      - key: THEATER_CHANNEL
+        value: "@threater_print_movies"
+      - key: BACKUP_CHANNEL_USERNAME
+        value: "@ETBackup"
+      - key: REQUEST_CHANNEL
+        value: "@EntertainmentTadka7860"
+      
+      # Private Channels
+      - key: PRIVATE_CHANNEL_1
+        value: "-1003251791991"
+      - key: PRIVATE_CHANNEL_2
+        value: "-1002337293281"
+      - key: ANY_CHANNEL
+        value: "-1003614546520"
+      
+      # Database
+      - key: DB_TYPE
+        value: "sqlite"
+      - key: DB_PATH
+        value: "/var/www/html/database/movies.db"
+      
+      # Cache
+      - key: REDIS_URL
+        value: "redis://redis:6379"
+      
+      # Performance
+      - key: PHP_MEMORY_LIMIT
+        value: "256M"
+      - key: PHP_MAX_EXECUTION_TIME
+        value: "300"
+      
+      # Features
+      - key: AUTO_BACKUP_HOUR
+        value: "03"
+      - key: SEARCH_COOLDOWN
+        value: "5"
+      - key: DAILY_REQUEST_LIMIT
+        value: "5"
+      - key: ITEMS_PER_PAGE
+        value: "5"
+      
+      # Logging
+      - key: LOG_LEVEL
+        value: "INFO"
+      - key: LOG_FILE
+        value: "/var/www/html/logs/bot.log"
+
+    healthCheckPath: /health
+    healthCheckTimeout: 100
+    numInstances: 1
+    buildFilter:
+      paths:
+        - index.php
+        - Dockerfile
+        - composer.json
+        - .htaccess
+    autoDeploy: true
+    disk:
+      name: data
+      mountPath: /var/www/html/data
+      sizeGB: 1
+
+  - type: cron
+    name: entertainment-tadka-backup
+    runtime: docker
+    schedule: "0 3 * * *"  # Daily at 3 AM
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: CRON_MODE
+        value: "backup"
+    disk:
+      name: data
+      mountPath: /var/www/html/data
+      sizeGB: 1
