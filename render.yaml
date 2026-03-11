@@ -1,0 +1,63 @@
+services:
+  - type: web
+    name: entertainment-tadka-bot
+    runtime: image
+    repo: https://github.com/yourusername/entertainment-tadka-bot
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: BOT_TOKEN
+        sync: false  # Set in Render dashboard
+      - key: ADMIN_ID
+        sync: false  # Set in Render dashboard
+      - key: WEBHOOK_URL
+        value: https://entertainment-tadka-bot.onrender.com
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: bot-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: bot-redis
+          property: port
+      - key: PHP_MEMORY_LIMIT
+        value: 512M
+      - key: PHP_MAX_EXECUTION_TIME
+        value: 300
+    
+    healthCheckPath: /health
+    healthCheckTimeout: 30
+    
+    disk:
+      name: bot-data
+      mountPath: /var/www/html/database
+      sizeGB: 5
+    
+    autoDeploy: true
+    
+    scaling:
+      minInstances: 0
+      maxInstances: 1
+      targetMemoryPercent: 80
+      targetCPUPercent: 80
+
+  - type: redis
+    name: bot-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
+
+cron:
+  - name: daily-backup
+    schedule: "0 3 * * *"
+    command: |
+      curl -X POST https://api.render.com/v1/services/$RENDER_SERVICE_ID/backup
+    envVars:
+      - key: RENDER_API_KEY
+        sync: false
