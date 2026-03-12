@@ -1706,4 +1706,26 @@ echo "<p><a href='?setwebhook&pass=" . htmlspecialchars(WEBHOOK_PASS) . "'>Set W
 echo "</div>";
 echo "</body></html>";
 exit;
+
+// ==============================
+// CRON TRIGGER ENDPOINT (for cron-job.org)
+// ==============================
+if (isset($_GET['cron']) && $_GET['cron'] === 'delete') {
+    // Password check
+    $pass = $_GET['pass'] ?? '';
+    if ($pass !== WEBHOOK_PASS) {
+        http_response_code(403);
+        die("Unauthorized");
+    }
+    
+    // Run the deletion script
+    include __DIR__ . '/cron_delete_once.php';
+    
+    // Optional: log that cron ran
+    Logger::info("Cron triggered from cron-job.org");
+    
+    // Return success response
+    echo "Cron job executed at " . date('Y-m-d H:i:s');
+    exit;
+}
 ?>
