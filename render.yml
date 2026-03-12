@@ -1,0 +1,65 @@
+# render.yml
+# Render Blueprint configuration
+# Is file ko project root mein rakh kar Render se connect karo
+
+services:
+  # Web service - main bot
+  - type: web
+    name: movie-bot-web
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    repo: https://github.com/yourusername/your-repo-name  # apna repo URL daalo
+    branch: main
+    healthCheckPath: /?view=stats
+    envVars:
+      - key: BOT_TOKEN
+        sync: false  # Render dashboard par manually set karo
+      - key: ADMIN_ID
+        sync: false
+      - key: REQUEST_GROUP_ID
+        sync: false
+      - key: WEBHOOK_PASS
+        sync: false
+      - key: CHANNEL_IDS
+        sync: false
+      - key: CHANNEL_USERNAMES
+        sync: false
+      - key: API_ID
+        sync: false
+      - key: API_HASH
+        sync: false
+    disk:
+      name: bot-data
+      mountPath: /var/www/html
+      sizeGB: 1
+
+  # Cron job - har minute run hoga
+  - type: cron
+    name: movie-bot-cron
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    schedule: "* * * * *"  # Har minute
+    command: php /var/www/html/cron_delete_once.php
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: REQUEST_GROUP_ID
+        sync: false
+      - key: WEBHOOK_PASS
+        sync: false
+      - key: CHANNEL_IDS
+        sync: false
+      - key: CHANNEL_USERNAMES
+        sync: false
+      - key: API_ID
+        sync: false
+      - key: API_HASH
+        sync: false
+    disk:
+      name: bot-data
+      mountPath: /var/www/html
+      sizeGB: 1
