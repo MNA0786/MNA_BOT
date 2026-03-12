@@ -1,0 +1,25 @@
+# .htaccess
+
+# Disable directory browsing
+Options -Indexes
+
+# Protect sensitive files
+<FilesMatch "^(\.env|\.git|composer\.json|composer\.lock|Dockerfile|docker-compose\.yml|README\.md|error\.log|movies\.csv|users\.json|cron_delete\.php|scan_old_posts.*\.php)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Allow webhook access only from Telegram IPs (optional, but recommended)
+# <Files "index1.9(📥 File Delivery System).php">
+#     Order Deny,Allow
+#     Deny from all
+#     Allow from 149.154.160.0/20
+#     Allow from 91.108.4.0/22
+# </Files>
+
+# Enable rewrite engine
+RewriteEngine On
+
+# Force HTTPS (optional, Render already does this)
+# RewriteCond %{HTTPS} off
+# RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
