@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: movie_bot_web
+    ports:
+      - "8080:80"
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - ADMIN_ID=${ADMIN_ID}
+      - REQUEST_GROUP_ID=${REQUEST_GROUP_ID}
+      - WEBHOOK_PASS=${WEBHOOK_PASS}
+      - CHANNEL_IDS=${CHANNEL_IDS}
+      - CHANNEL_USERNAMES=${CHANNEL_USERNAMES}
+      - API_ID=${API_ID}
+      - API_HASH=${API_HASH}
+    volumes:
+      - ./bot.sqlite:/var/www/html/bot.sqlite
+      - ./session:/var/www/html/session
+      - ./logs:/var/www/html/logs
+      - ./error.log:/var/www/html/error.log
+    restart: unless-stopped
+    networks:
+      - bot_network
+
+  cron:
+    build: .
+    container_name: movie_bot_cron
+    command: php /var/www/html/cron_delete_once.php
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - ADMIN_ID=${ADMIN_ID}
+      - REQUEST_GROUP_ID=${REQUEST_GROUP_ID}
+      - WEBHOOK_PASS=${WEBHOOK_PASS}
+      - CHANNEL_IDS=${CHANNEL_IDS}
+      - CHANNEL_USERNAMES=${CHANNEL_USERNAMES}
+      - API_ID=${API_ID}
+      - API_HASH=${API_HASH}
+    volumes:
+      - ./bot.sqlite:/var/www/html/bot.sqlite
+      - ./session:/var/www/html/session
+      - ./logs:/var/www/html/logs
+      - ./error.log:/var/www/html/error.log
+    restart: unless-stopped
+    networks:
+      - bot_network
+    # Run every minute (you can change frequency inside script or use another scheduler)
+    # For continuous background, use `command: php cron_delete.php` instead.
+
+networks:
+  bot_network:
+    driver: bridge
