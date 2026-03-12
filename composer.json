@@ -1,0 +1,21 @@
+{
+    "name": "entertainment-tadka/bot",
+    "description": "Telegram Movie Bot with Auto-Delete and Settings",
+    "type": "project",
+    "require": {
+        "php": ">=8.0",
+        "ext-sqlite3": "*",
+        "ext-curl": "*",
+        "ext-json": "*",
+        "danog/madelineproto": "^8.0"
+    },
+    "autoload": {
+        "classmap": ["./"]
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
