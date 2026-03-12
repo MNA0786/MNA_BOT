@@ -688,6 +688,16 @@ class BotAPI {
         return $res;
     }
 
+    // ✅ NEW PUBLIC METHOD TO ACCESS REQUEST (FIX FOR resolveChannelUsernames)
+    public function callMethod($method, $params = []) {
+        return $this->request($method, $params);
+    }
+
+    // ✅ NEW: getChat method for resolving usernames
+    public function getChat($chat_id) {
+        return $this->request('getChat', ['chat_id' => $chat_id]);
+    }
+
     public function sendMessage($chat_id, $text, $reply_markup = null, $parse_mode = 'HTML') {
         $params = ['chat_id' => $chat_id, 'text' => $text];
         if ($reply_markup) $params['reply_markup'] = json_encode($reply_markup);
@@ -1199,7 +1209,7 @@ class Bot {
                 $welcome .= "🔍 <b>Examples:</b>\n";
                 $welcome .= "• kgf\n• pushpa\n• avengers\n\n";
                 $welcome .= "📢 <b>Join our channels:</b>\n";
-                $welcome .= "@EntertainmentTadka786, @Entertainment_Tadka_Serial_786\n\n";
+                $welcome .= "@EntertainmentTadka786, @ETBackup, @threater_print_movies, @Entertainment_Tadka_Serial_786\n\n";
                 $welcome .= "💬 <b>Request Group:</b> @EntertainmentTadka7860\n\n";
                 $welcome .= "⚙️ <b>Settings:</b> Use /settings to customize your experience.";
                 
@@ -1607,7 +1617,7 @@ class Bot {
 }
 
 // ==============================
-// RESOLVE CHANNEL USERNAMES TO IDs
+// RESOLVE CHANNEL USERNAMES TO IDs (FIXED)
 // ==============================
 function resolveChannelUsernames($bot_token, $usernames_str) {
     if (empty($usernames_str)) return [];
@@ -1617,7 +1627,8 @@ function resolveChannelUsernames($bot_token, $usernames_str) {
     foreach ($usernames as $username) {
         $username = ltrim($username, '@');
         Logger::info("Resolving username: @$username");
-        $response = $api->request('getChat', ['chat_id' => '@' . $username]);
+        // ✅ FIX: Use public method getChat instead of private request
+        $response = $api->getChat('@' . $username);
         $data = json_decode($response, true);
         if ($data && isset($data['ok']) && $data['ok']) {
             $chat_id = $data['result']['id'];
@@ -1667,7 +1678,7 @@ if (isset($_GET['setwebhook'])) {
     $url = strtok($url, '?');
     
     $api = new BotAPI(BOT_TOKEN);
-    $result = $api->request('setWebhook', ['url' => $url]);
+    $result = $api->callMethod('setWebhook', ['url' => $url]);
     
     echo "<pre>Webhook set result:\n";
     print_r(json_decode($result, true));
