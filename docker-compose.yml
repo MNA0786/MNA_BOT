@@ -1,52 +1,34 @@
 version: '3.8'
 
 services:
-  web:
+  bot:
     build: .
-    container_name: movie_bot_web
+    container_name: entertainment_tadka_bot
     ports:
       - "8080:80"
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
       - ADMIN_ID=${ADMIN_ID}
-      - REQUEST_GROUP_ID=${REQUEST_GROUP_ID}
-      - WEBHOOK_PASS=${WEBHOOK_PASS}
-      - CHANNEL_IDS=${CHANNEL_IDS}
-      - CHANNEL_USERNAMES=${CHANNEL_USERNAMES}
-      - API_ID=${API_ID}
-      - API_HASH=${API_HASH}
+      - MAIN_CHANNEL=@EntertainmentTadka786
+      - MAIN_CHANNEL_ID=-1003251791991
+      - THEATER_CHANNEL=@threater_print_movies
+      - THEATER_CHANNEL_ID=-1003614546520
+      - BACKUP_CHANNEL_USERNAME=@ETBackup
+      - BACKUP_CHANNEL_ID=-1002337293281
+      - REQUEST_CHANNEL=@EntertainmentTadka7860
+      - PHP_MEMORY_LIMIT=256M
+      - PHP_MAX_EXECUTION_TIME=300
     volumes:
-      - ./bot.sqlite:/var/www/html/bot.sqlite
-      - ./session:/var/www/html/session
-      - ./logs:/var/www/html/logs
+      - ./backups:/var/www/html/backups
+      - ./movies.csv:/var/www/html/movies.csv
+      - ./users.json:/var/www/html/users.json
+      - ./bot_stats.json:/var/www/html/bot_stats.json
+      - ./movie_requests.json:/var/www/html/movie_requests.json
+      - ./bot_activity.log:/var/www/html/bot_activity.log
       - ./error.log:/var/www/html/error.log
     restart: unless-stopped
     networks:
       - bot_network
-
-  cron:
-    build: .
-    container_name: movie_bot_cron
-    command: php /var/www/html/cron_delete_once.php
-    environment:
-      - BOT_TOKEN=${BOT_TOKEN}
-      - ADMIN_ID=${ADMIN_ID}
-      - REQUEST_GROUP_ID=${REQUEST_GROUP_ID}
-      - WEBHOOK_PASS=${WEBHOOK_PASS}
-      - CHANNEL_IDS=${CHANNEL_IDS}
-      - CHANNEL_USERNAMES=${CHANNEL_USERNAMES}
-      - API_ID=${API_ID}
-      - API_HASH=${API_HASH}
-    volumes:
-      - ./bot.sqlite:/var/www/html/bot.sqlite
-      - ./session:/var/www/html/session
-      - ./logs:/var/www/html/logs
-      - ./error.log:/var/www/html/error.log
-    restart: unless-stopped
-    networks:
-      - bot_network
-    # Run every minute (you can change frequency inside script or use another scheduler)
-    # For continuous background, use `command: php cron_delete.php` instead.
 
 networks:
   bot_network:
