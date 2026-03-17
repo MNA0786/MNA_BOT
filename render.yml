@@ -1,5 +1,3 @@
-# render.yml - Complete Deployment Configuration for Entertainment Tadka Bot
-
 services:
   - type: web
     name: entertainment-tadka-bot
@@ -9,12 +7,11 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     
-    # Environment Variables
     envVars:
       - key: BOT_TOKEN
-        sync: false  # Set manually in Render dashboard
+        sync: false
       - key: ADMIN_ID
-        sync: false  # Set manually in Render dashboard
+        sync: false
       - key: MAIN_CHANNEL
         value: "@EntertainmentTadka786"
       - key: MAIN_CHANNEL_ID
@@ -37,36 +34,19 @@ services:
         value: "-1003251791991"
       - key: PRIVATE_CHANNEL_2_ID
         value: "-1002337293281"
-      - key: PHP_MEMORY_LIMIT
-        value: "512M"
-      - key: PHP_MAX_EXECUTION_TIME
-        value: "300"
-      - key: MAX_FILE_UPLOADS
-        value: "20"
-      - key: POST_MAX_SIZE
-        value: "100M"
-      - key: UPLOAD_MAX_FILESIZE
-        value: "100M"
 
-    # Instance Settings
-    plan: free  # or starter, professional
-    region: oregon  # ohio, frankfurt, singapore, oregon
+    plan: free
+    region: oregon
     numInstances: 1
-    
-    # Health Check
-    healthCheckPath: /
-    healthCheckTimeout: 100
-    
-    # Auto Deploy
     autoDeploy: true
-    pullRequestPreviewsEnabled: true
     
-    # Build Filter
+    healthCheckPath: /
+    
+    # Build filter to include necessary files
     buildFilter:
       paths:
         - index.php
         - Dockerfile
-        - composer.json
         - .htaccess
         - movies.csv
         - users.json
@@ -79,153 +59,25 @@ services:
         - error.log
         - bot_activity.log
 
-  - type: cron
-    name: backup-cron
-    runtime: docker
-    schedule: "0 3 * * *"  # Daily at 3 AM
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
-    
-    envVars:
-      - key: BOT_TOKEN
-        sync: false
-      - key: ADMIN_ID
-        sync: false
-      - key: MAIN_CHANNEL_ID
-        value: "-1003181705395"
-      - key: BACKUP_CHANNEL_ID
-        value: "-1002964109368"
-      - key: CRON_MODE
-        value: "backup"
-    
-    # Cron Job Command
-    dockerCommand: "php -r 'require_once \"index.php\"; if(defined(\"CRON_MODE\") && CRON_MODE==\"backup\") auto_backup();'"
-
-# Disk Volumes
 volumes:
   - name: bot-data
     sizeGB: 1
     mountPath: /var/www/html/backups
     
-  - name: bot-database
+  - name: bot-logs
     sizeGB: 1
-    mountPath: /var/www/html/data
+    mountPath: /var/www/html/logs
 
-# Environment Groups
-envVarGroups:
-  - name: bot-config
-    envVars:
-      - key: APP_ENV
-        value: production
-      - key: APP_DEBUG
-        value: false
-      - key: APP_TIMEZONE
-        value: Asia/Kolkata
-      - key: CACHE_EXPIRY
-        value: "300"
-      - key: ITEMS_PER_PAGE
-        value: "5"
-      - key: MAX_SEARCH_RESULTS
-        value: "15"
-      - key: DAILY_REQUEST_LIMIT
-        value: "5"
-      - key: AUTO_BACKUP_HOUR
-        value: "03"
-      - key: MAX_PAGES_TO_SHOW
-        value: "7"
-      - key: PAGINATION_CACHE_TIMEOUT
-        value: "60"
-      - key: PREVIEW_ITEMS
-        value: "3"
-      - key: BATCH_SIZE
-        value: "5"
-
-# Notification Settings
-notification:
-  - type: email
-    recipients:
-      - admin@entertainmenttadka.com
-    events:
-      - deploy
-      - rollback
-      - health
-      - alert
-      
-  - type: slack
-    webhook: https://hooks.slack.com/services/your/webhook/url
-    events:
-      - deploy
-      - alert
-
-# Custom Domains (if any)
-domains:
-  - domain: bot.entertainmenttadka.com
-    ssl: true
-    redirectToHttps: true
-
-# Scaling Rules
-scaling:
-  minInstances: 1
-  maxInstances: 1
-  targetMemoryPercent: 80
-  targetCPUPercent: 70
-
-# Headers & Security
-headers:
-  - path: /*
-    name: X-Content-Type-Options
-    value: nosniff
-  - path: /*
-    name: X-Frame-Options
-    value: DENY
-  - path: /*
-    name: X-XSS-Protection
-    value: "1; mode=block"
-  - path: /*
-    name: Referrer-Policy
-    value: strict-origin-when-cross-origin
-  - path: /*
-    name: Permissions-Policy
-    value: geolocation=(), microphone=(), camera=()
-
-# Static Files (if any)
-static:
-  - path: /backups
-    dir: backups
-    headers:
-      - name: X-Robots-Tag
-        value: noindex
-  - path: /logs
-    dir: .
-    headers:
-      - name: X-Robots-Tag
-        value: noindex
-
-# Health Check Endpoint
-health:
-  path: /
-  method: GET
-  successCodes:
-    - 200
-    - 304
-  checkInterval: 30
-  timeout: 10
-  unhealthyThreshold: 3
-  healthyThreshold: 1
-
-# Backup Configuration
-backups:
-  - name: daily-backup
-    schedule: "0 3 * * *"
-    retention: 7
-    volumes:
-      - bot-data
-      - bot-database
-    paths:
-      - /var/www/html/backups
-      - /var/www/html/movies.csv
-      - /var/www/html/users.json
-      - /var/www/html/bot_stats.json
-      - /var/www/html/movie_requests.json
-      - /var/www/html/bot_activity.log
-      - /var/www/html/error.log
+# Disk initialization script
+diskInitCommands:
+  - mkdir -p /var/www/html/backups
+  - mkdir -p /var/www/html/logs
+  - touch /var/www/html/movies.csv
+  - touch /var/www/html/users.json
+  - touch /var/www/html/bot_stats.json
+  - touch /var/www/html/movie_requests.json
+  - touch /var/www/html/bot_activity.log
+  - touch /var/www/html/error.log
+  - chmod 666 /var/www/html/*.csv
+  - chmod 666 /var/www/html/*.json
+  - chmod 666 /var/www/html/*.log
