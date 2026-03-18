@@ -1,0 +1,36 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# JSON database files
+movies.json
+requests.json
+
+# Logs
+*.log
+error.log
+
+# Backups
+backups/
+*.bak
+
+# Deployment flag
+deploy_notification.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swo
+*.swp
+
+# Composer
+vendor/
+composer.lock
+
+# Docker
+.dockerignore
