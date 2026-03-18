@@ -1,35 +1,14 @@
 version: '3.8'
 
 services:
-  bot:
+  web:
     build: .
-    container_name: entertainment_tadka_bot
     ports:
       - "8080:80"
-    environment:
-      - BOT_TOKEN=${BOT_TOKEN}
-      - ADMIN_ID=${ADMIN_ID}
-      - MAIN_CHANNEL=@EntertainmentTadka786
-      - MAIN_CHANNEL_ID=-1003251791991
-      - THEATER_CHANNEL=@threater_print_movies
-      - THEATER_CHANNEL_ID=-1003614546520
-      - BACKUP_CHANNEL_USERNAME=@ETBackup
-      - BACKUP_CHANNEL_ID=-1002337293281
-      - REQUEST_CHANNEL=@EntertainmentTadka7860
-      - PHP_MEMORY_LIMIT=256M
-      - PHP_MAX_EXECUTION_TIME=300
     volumes:
-      - ./backups:/var/www/html/backups
-      - ./movies.csv:/var/www/html/movies.csv
-      - ./users.json:/var/www/html/users.json
-      - ./bot_stats.json:/var/www/html/bot_stats.json
-      - ./movie_requests.json:/var/www/html/movie_requests.json
-      - ./bot_activity.log:/var/www/html/bot_activity.log
-      - ./error.log:/var/www/html/error.log
-    restart: unless-stopped
-    networks:
-      - bot_network
-
-networks:
-  bot_network:
-    driver: bridge
+      - .:/var/www/html
+    environment:
+      - APACHE_RUN_USER=www-data
+      - APACHE_RUN_GROUP=www-data
+    env_file:
+      - .env
