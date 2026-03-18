@@ -1,83 +1,43 @@
 services:
   - type: web
     name: entertainment-tadka-bot
-    runtime: docker
-    repo: https://github.com/yourusername/entertainment-tadka-bot
+    env: docker
+    plan: free
     branch: main
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
-    
+    autoDeploy: true
+    healthCheckPath: /
     envVars:
       - key: BOT_TOKEN
         sync: false
-      - key: ADMIN_ID
+      - key: API_ID
         sync: false
-      - key: MAIN_CHANNEL
-        value: "@EntertainmentTadka786"
-      - key: MAIN_CHANNEL_ID
-        value: "-1003181705395"
-      - key: THEATER_CHANNEL
-        value: "@threater_print_movies"
-      - key: THEATER_CHANNEL_ID
-        value: "-1002831605258"
-      - key: BACKUP_CHANNEL_USERNAME
-        value: "@ETBackup"
-      - key: BACKUP_CHANNEL_ID
-        value: "-1002964109368"
-      - key: REQUEST_CHANNEL
-        value: "@EntertainmentTadka7860"
-      - key: SERIAL_CHANNEL
-        value: "@Entertainment_Tadka_Serial_786"
-      - key: SERIAL_CHANNEL_ID
-        value: "-1003614546520"
-      - key: PRIVATE_CHANNEL_1_ID
-        value: "-1003251791991"
-      - key: PRIVATE_CHANNEL_2_ID
-        value: "-1002337293281"
-
-    plan: free
-    region: oregon
-    numInstances: 1
-    autoDeploy: true
-    
-    healthCheckPath: /
-    
-    # Build filter to include necessary files
-    buildFilter:
-      paths:
-        - index.php
-        - Dockerfile
-        - .htaccess
-        - movies.csv
-        - users.json
-        - bot_stats.json
-        - movie_requests.json
-      ignoredPaths:
-        - README.md
-        - .gitignore
-        - backups/
-        - error.log
-        - bot_activity.log
-
-volumes:
-  - name: bot-data
-    sizeGB: 1
-    mountPath: /var/www/html/backups
-    
-  - name: bot-logs
-    sizeGB: 1
-    mountPath: /var/www/html/logs
-
-# Disk initialization script
-diskInitCommands:
-  - mkdir -p /var/www/html/backups
-  - mkdir -p /var/www/html/logs
-  - touch /var/www/html/movies.csv
-  - touch /var/www/html/users.json
-  - touch /var/www/html/bot_stats.json
-  - touch /var/www/html/movie_requests.json
-  - touch /var/www/html/bot_activity.log
-  - touch /var/www/html/error.log
-  - chmod 666 /var/www/html/*.csv
-  - chmod 666 /var/www/html/*.json
-  - chmod 666 /var/www/html/*.log
+      - key: API_HASH
+        sync: false
+      - key: ADMIN_ID
+        value: 1080317415
+      - key: BOT_USERNAME
+        value: @EntertainmentTadkaBot
+      - key: CHANNEL1_USERNAME
+        value: @EntertainmentTadka786
+      - key: CHANNEL1_ID
+        value: -1003181705395
+      - key: CHANNEL2_USERNAME
+        value: @Entertainment_Tadka_Serial_786
+      - key: CHANNEL2_ID
+        value: -1003614546520
+      - key: CHANNEL3_USERNAME
+        value: @threater_print_movies
+      - key: CHANNEL3_ID
+        value: -1002831605258
+      - key: CHANNEL4_USERNAME
+        value: @ETBackup
+      - key: CHANNEL4_ID
+        value: -1002964109368
+      - key: PRIVATE_CHANNEL1_ID
+        value: -1003251791991
+      - key: PRIVATE_CHANNEL2_ID
+        value: -1002337293281
+      - key: REQUEST_GROUP_USERNAME
+        value: @EntertainmentTadka7860
+      - key: REQUEST_GROUP_ID
+        value: -1003083386043
