@@ -872,11 +872,15 @@ $update = json_decode(file_get_contents('php://input'), true);
 if ($update) {
     
     // ==============================
-    // CHANNEL POST HANDLING - AUTO INDEXING
+    // CHANNEL POST HANDLING - AUTO INDEXING WITH DEBUG LOGS
     // ==============================
     if (isset($update['channel_post'])) {
         $post = $update['channel_post'];
         $chat_id = $post['chat']['id'];
+        
+        error_log("=================================");
+        error_log("📢 CHANNEL POST DETECTED!");
+        error_log("Channel ID: " . $chat_id);
         
         $is_public = false;
         $channel_name = '';
@@ -884,35 +888,64 @@ if ($update) {
             if ($channel['id'] == $chat_id) {
                 $is_public = true;
                 $channel_name = $channel['username'];
+                error_log("✅ Matched Public Channel: " . $channel_name);
                 break;
             }
         }
+        
+        error_log("Is Public Channel: " . ($is_public ? 'YES' : 'NO'));
         
         if ($is_public) {
             $message_id = $post['message_id'];
             $caption = $post['caption'] ?? '';
             
+            error_log("Message ID: " . $message_id);
+            error_log("Raw Caption: " . $caption);
+            
             if (isset($post['document'])) {
                 $file_name = $post['document']['file_name'] ?? 'Unknown';
                 $clean_name = cleanTitle($caption);
                 
+                error_log("📄 DOCUMENT FOUND!");
+                error_log("File Name: " . $file_name);
+                error_log("Clean Name (from caption): " . $clean_name);
+                
                 if (empty($clean_name)) {
                     $clean_name = cleanTitle($file_name);
+                    error_log("Clean Name (from filename): " . $clean_name);
                 }
                 
-                if (!empty($clean_name) && !isDuplicate($message_id, $chat_id)) {
-                    saveMovieToJSON($clean_name, $message_id, $chat_id, $channel_name);
+                $is_dup = isDuplicate($message_id, $chat_id);
+                error_log("Duplicate Check: " . ($is_dup ? '✅ DUPLICATE' : '🆕 NEW MOVIE'));
+                
+                if (!empty($clean_name) && !$is_dup) {
+                    $saved = saveMovieToJSON($clean_name, $message_id, $chat_id, $channel_name);
+                    error_log("💾 SAVE RESULT: " . ($saved ? 'SUCCESS!' : 'FAILED!'));
+                } else {
+                    error_log("⛔ SAVE SKIPPED - " . (empty($clean_name) ? 'Empty name' : 'Duplicate'));
                 }
             }
             
             if (isset($post['video'])) {
                 $clean_name = cleanTitle($caption);
                 
-                if (!empty($clean_name) && !isDuplicate($message_id, $chat_id)) {
-                    saveMovieToJSON($clean_name, $message_id, $chat_id, $channel_name);
+                error_log("🎥 VIDEO FOUND!");
+                error_log("Clean Name: " . $clean_name);
+                
+                $is_dup = isDuplicate($message_id, $chat_id);
+                error_log("Duplicate Check: " . ($is_dup ? '✅ DUPLICATE' : '🆕 NEW MOVIE'));
+                
+                if (!empty($clean_name) && !$is_dup) {
+                    $saved = saveMovieToJSON($clean_name, $message_id, $chat_id, $channel_name);
+                    error_log("💾 SAVE RESULT: " . ($saved ? 'SUCCESS!' : 'FAILED!'));
+                } else {
+                    error_log("⛔ SAVE SKIPPED - " . (empty($clean_name) ? 'Empty name' : 'Duplicate'));
                 }
             }
+        } else {
+            error_log("❌ Not a configured public channel - ignoring");
         }
+        error_log("=================================");
     }
     
     // ==============================
